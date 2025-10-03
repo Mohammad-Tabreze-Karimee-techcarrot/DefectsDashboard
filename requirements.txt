@@ -1,0 +1,6 @@
+pandas
+plotly
+openpyxl
+urllib
+dash
+requests
