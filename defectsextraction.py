@@ -26,8 +26,8 @@ if not query_id:
     exit()
 
 # 2️⃣ Run saved query to get work item IDs
-run_query_url = f"https://dev.azure.com/{organization}/{project}/_apis/wit/queries/{query_id}/wiql?api-version=7.0"
-wiql_response = requests.get(run_query_url, auth=HTTPBasicAuth("", pat))
+run_query_url = f"https://dev.azure.com/{organization}/{project}/_apis/wit/wiql/{query_id}?api-version=7.0"
+wiql_response = requests.post(run_query_url, auth=HTTPBasicAuth("", pat))
 
 if wiql_response.status_code != 200:
     print(f"❌ Error running saved query: {wiql_response.status_code} - {wiql_response.text}")
