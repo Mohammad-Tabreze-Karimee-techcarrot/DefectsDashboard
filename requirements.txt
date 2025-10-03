@@ -1,6 +1,6 @@
 pandas
 plotly
 openpyxl
-urllib
+urllib3
 dash
 requests
