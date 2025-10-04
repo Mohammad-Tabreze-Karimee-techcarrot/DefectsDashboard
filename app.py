@@ -34,6 +34,10 @@ df_open = df[~df["State"].str.lower().eq("closed")]
 severity_order = ["High", "Medium", "Low", "Suggestion"]
 df_open["Severity"] = df_open["Severity"].astype(str).str.replace(r"^\d+\s*-\s*", "", regex=True)
 
+# Aggregate counts for severity chart
+severity_counts = df_open["Severity"].value_counts().reindex(severity_order, fill_value=0).reset_index()
+severity_counts.columns = ["Severity", "Count"]
+
 # Count defects by state
 state_counts = df["State_Display"].value_counts().to_dict()
 total_defects = len(df)
@@ -64,10 +68,11 @@ bar_state_fig = px.bar(
     color_discrete_map=state_colors
 )
 
-# Bar chart for open defects by severity
+# Bar chart for open defects by severity (aggregated counts)
 bar_severity_fig = px.bar(
-    df_open,
+    severity_counts,
     x="Severity",
+    y="Count",
     title="Open Defects Count by Severity",
     category_orders={"Severity": severity_order},
     color="Severity",
@@ -77,7 +82,7 @@ bar_severity_fig = px.bar(
         "Low": "yellow",
         "Suggestion": "blue"
     },
-    text_auto=True
+    text="Count"
 )
 
 # Layout
@@ -140,6 +145,8 @@ def display_links(pie_click, bar_state_click, bar_severity_click):
         return "Click on a chart to see defect links."
 
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    # Reset filtered dataframe to empty
     filtered = pd.DataFrame()
 
     # 🎯 Filter based on clicked chart
@@ -161,14 +168,7 @@ def display_links(pie_click, bar_state_click, bar_severity_click):
         severity = bar_severity_click["points"][0]["x"]
         filtered = df_open[df_open["Severity"] == severity]
 
-    else:
-        return "No data found."
-
-    # Sort per Assigned To
-    filtered = filtered.sort_values(by=["Assigned To", "ID"], na_position="last")
-    filtered["S.No"] = filtered.groupby("Assigned To").cumcount() + 1
-
-    # Table header only; details hidden until user clicks on Assigned To
+    # Always show header only; details hidden until user clicks Assigned To
     header = dhtml.Div([
         dhtml.Span("S.No", style={"fontWeight": "bold", "width": "50px", "display": "inline-block"}),
         dhtml.Span("Defect Link", style={"fontWeight": "bold", "width": "150px", "display": "inline-block"}),
@@ -179,6 +179,13 @@ def display_links(pie_click, bar_state_click, bar_severity_click):
         "borderBottom": "2px solid #000",
         "paddingBottom": "5px"
     })
+
+    if filtered.empty:
+        return dhtml.Div([header, "No defects found."], style={"marginTop": "10px"})
+
+    # Sort per Assigned To
+    filtered = filtered.sort_values(by=["Assigned To", "ID"], na_position="last")
+    filtered["S.No"] = filtered.groupby("Assigned To").cumcount() + 1
 
     # Create collapsible sections for each Assigned To, all closed by default
     groups = []
@@ -207,7 +214,7 @@ def display_links(pie_click, bar_state_click, bar_severity_click):
                 "fontFamily": "Arial"
             }),
             dhtml.Div(defect_rows, style={"marginLeft": "20px", "marginTop": "6px"})
-        ], open=False)  # Always closed by default
+        ], open=False)  # Always closed
 
         groups.append(details_section)
 
