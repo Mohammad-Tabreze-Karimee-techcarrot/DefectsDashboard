@@ -30,6 +30,10 @@ state_colors = {
 # Filter for open defects only (exclude Closed)
 df_open = df[~df["State"].str.lower().eq("closed")]
 
+# Remove numbers from Severity and ensure order
+severity_order = ["High", "Medium", "Low", "Suggestion"]
+df_open["Severity"] = df_open["Severity"].astype(str).str.replace(r"^\d+\s*-\s*", "", regex=True)
+
 # Count defects by state
 state_counts = df["State_Display"].value_counts().to_dict()
 total_defects = len(df)
@@ -53,6 +57,28 @@ pie_fig = px.pie(
     color_discrete_map=state_colors
 )
 pie_fig.update_traces(textinfo="percent+label+value")
+
+# Bar chart for state
+bar_state_fig = px.bar(
+    df, x="State_Display", title="Defects Count by State", color="State_Display",
+    color_discrete_map=state_colors
+)
+
+# Bar chart for open defects by severity
+bar_severity_fig = px.bar(
+    df_open,
+    x="Severity",
+    title="Open Defects Count by Severity",
+    category_orders={"Severity": severity_order},
+    color="Severity",
+    color_discrete_map={
+        "High": "red",
+        "Medium": "orange",
+        "Low": "yellow",
+        "Suggestion": "blue"
+    },
+    text_auto=True
+)
 
 # Layout
 app.layout = dhtml.Div([
@@ -85,17 +111,8 @@ app.layout = dhtml.Div([
     # ====== CHARTS ======
     dhtml.Div([
         dcc.Graph(id="pie-chart", figure=pie_fig, style={"width": "33%", "height": "320px"}),
-        dcc.Graph(
-            id="bar-chart-state",
-            figure=px.bar(df, x="State_Display", title="Defects Count by State", color="State_Display",
-                          color_discrete_map=state_colors),
-            style={"width": "33%", "height": "320px"}
-        ),
-        dcc.Graph(
-            id="bar-chart-severity",
-            figure=px.bar(df_open, x="Severity", title="Open Defects Count by Severity"),
-            style={"width": "33%", "height": "320px"}
-        )
+        dcc.Graph(id="bar-chart-state", figure=bar_state_fig, style={"width": "33%", "height": "320px"}),
+        dcc.Graph(id="bar-chart-severity", figure=bar_severity_fig, style={"width": "33%", "height": "320px"})
     ], style={
         "display": "flex",
         "flexDirection": "row",
@@ -147,11 +164,11 @@ def display_links(pie_click, bar_state_click, bar_severity_click):
     else:
         return "No data found."
 
-    # Sort and number per Assigned To
+    # Sort per Assigned To
     filtered = filtered.sort_values(by=["Assigned To", "ID"], na_position="last")
     filtered["S.No"] = filtered.groupby("Assigned To").cumcount() + 1
 
-    # Table header
+    # Table header only; details hidden until user clicks on Assigned To
     header = dhtml.Div([
         dhtml.Span("S.No", style={"fontWeight": "bold", "width": "50px", "display": "inline-block"}),
         dhtml.Span("Defect Link", style={"fontWeight": "bold", "width": "150px", "display": "inline-block"}),
@@ -163,7 +180,7 @@ def display_links(pie_click, bar_state_click, bar_severity_click):
         "paddingBottom": "5px"
     })
 
-    # Group per Assigned To
+    # Create collapsible sections for each Assigned To, all closed by default
     groups = []
     for assigned_to, group in filtered.groupby("Assigned To"):
         defect_rows = [
@@ -190,12 +207,11 @@ def display_links(pie_click, bar_state_click, bar_severity_click):
                 "fontFamily": "Arial"
             }),
             dhtml.Div(defect_rows, style={"marginLeft": "20px", "marginTop": "6px"})
-        ], open=False)
+        ], open=False)  # Always closed by default
 
         groups.append(details_section)
 
     return dhtml.Div([header] + groups, style={"marginTop": "10px"})
-
 
 # Run app
 if __name__ == "__main__":
