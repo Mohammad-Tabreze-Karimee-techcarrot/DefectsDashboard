@@ -14,9 +14,15 @@ df = pd.read_excel(file_path)
 # Rename columns to avoid issues
 df = df.rename(columns=lambda x: x.strip())
 
+# Ensure required columns exist
+required_cols = ["ID", "Work Item Type", "Title", "Issue Links", "State", "Assigned To", "Severity", "Tags"]
+for col in required_cols:
+    if col not in df.columns:
+        df[col] = ""
+
 # 🔹 Create clickable Title
 df["Title (Link)"] = df.apply(
-    lambda row: f"[{row['Title']}]({row['Issue Links']})" if pd.notna(row["Issue Links"]) else row["Title"],
+    lambda row: f"[{row['Title']}]({row['Issue Links']})" if pd.notna(row["Issue Links"]) and row["Issue Links"].strip() != "" else row["Title"],
     axis=1
 )
 
@@ -25,7 +31,7 @@ def format_tags(tag_string):
     if pd.isna(tag_string) or str(tag_string).strip() == "":
         return ""
     tags = [t.strip() for t in str(tag_string).split(";") if t.strip()]
-    colors = ["#ff5733", "#33c1ff", "#75ff33", "#f033ff", "#ffc300", "#a569bd"]  # some nice colors
+    colors = ["#ff5733", "#33c1ff", "#75ff33", "#f033ff", "#ffc300", "#a569bd"]
     styled_tags = [
         f"<span title='{tag}' style='background-color:{colors[i % len(colors)]}; "
         f"color:white; padding:3px 8px; border-radius:12px; margin-right:4px; "
@@ -38,7 +44,6 @@ df["Formatted Tags"] = df["Tags"].apply(format_tags)
 
 # 🔹 1. Defect status summary
 status_counts = df["State"].value_counts().to_dict()
-
 new_count = status_counts.get("New", 0)
 reopen_count = status_counts.get("Reopen", 0)
 closed_count = status_counts.get("Closed", 0)
@@ -49,7 +54,6 @@ status_table = pd.DataFrame({
     "Count": [new_count, reopen_count, closed_count, resolved_count]
 })
 
-# Colors
 status_colors = {
     "New": "red",
     "Reopen": "maroon",
@@ -66,20 +70,12 @@ fig_status = px.pie(
     color_discrete_map=status_colors,
     hole=0.4
 )
-
-fig_status.update_traces(
-    textinfo="percent+label+value",
-    pull=[0.05, 0.05, 0.05, 0.05]
-)
-
+fig_status.update_traces(textinfo="percent+label+value", pull=[0.05]*4)
 fig_status.update_layout(title="Defect Distribution by Status")
 
 # 🔹 3. Severity Chart
 severity_order = ["High", "Medium", "Low", "Suggestion"]
-
-# Normalize severity values (remove numbers like 1-High, 2-Medium)
 df["Severity"] = df["Severity"].astype(str).str.replace(r"^\d+-", "", regex=True)
-
 severity_counts = df["Severity"].value_counts().reindex(severity_order, fill_value=0)
 
 fig_severity = px.bar(
@@ -88,12 +84,7 @@ fig_severity = px.bar(
     text=severity_counts.values,
     labels={"x": "Severity", "y": "Defect Count"},
     color=severity_counts.index,
-    color_discrete_map={
-        "High": "red",
-        "Medium": "orange",
-        "Low": "blue",
-        "Suggestion": "gray"
-    }
+    color_discrete_map={"High": "red", "Medium": "orange", "Low": "blue", "Suggestion": "gray"}
 )
 fig_severity.update_traces(textposition="outside")
 fig_severity.update_layout(title="Open Defect Count by Severity")
@@ -109,7 +100,7 @@ detail_table = dash_table.DataTable(
     style_table={"overflowX": "auto"},
     style_cell={"textAlign": "left", "padding": "8px", "whiteSpace": "normal"},
     style_header={"backgroundColor": "#f4f4f4", "fontWeight": "bold"},
-    markdown_options={"html": True, "link_target": "_blank"},  # enables clickable links + HTML tags
+    markdown_options={"html": True}  # Safe for older Dash versions
 )
 
 # 🔹 5. Dash App
