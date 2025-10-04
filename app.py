@@ -36,7 +36,7 @@ resolved_count = state_counts_df.loc[state_counts_df["State_Display"]=="Resolved
 
 # App
 app = Dash(__name__)
-app.title = "Defects Dashboard"
+app.title = "Smart FM Replacement Defects Dashboard"
 
 # Pie chart
 pie_fig = px.pie(df, names="State_Display", title="Defects by State", hole=0.3,
