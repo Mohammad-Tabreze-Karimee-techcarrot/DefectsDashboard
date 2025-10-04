@@ -19,57 +19,76 @@ for col in required_cols:
 # Replace 'Active' with 'Reopen' for display in charts
 df["State_Display"] = df["State"].replace({"Active": "Reopen"})
 
+# Define colors for states
+state_colors = {
+    "New": "red",
+    "Reopen": "maroon",
+    "Closed": "green",
+    "Resolved": "orange"
+}
+
 # Filter for open defects only (exclude Closed)
 df_open = df[~df["State"].str.lower().eq("closed")]
 
-# ====== TOTAL COUNTS ======
-total_new = df[df["State"].str.lower() == "new"].shape[0]
-total_reopen = df[df["State"].str.lower() == "active"].shape[0]  # Active == Reopen
-total_closed = df[df["State"].str.lower() == "closed"].shape[0]
-total_reported = df.shape[0]
+# Count defects by state
+state_counts = df["State_Display"].value_counts().to_dict()
+total_defects = len(df)
+
+new_count = state_counts.get("New", 0)
+reopen_count = state_counts.get("Reopen", 0)
+closed_count = state_counts.get("Closed", 0)
+resolved_count = state_counts.get("Resolved", 0)
 
 # Create Dash app
 app = Dash(__name__)
 app.title = "Defects Dashboard"
 
+# Pie chart with counts + percentages
+pie_fig = px.pie(
+    df,
+    names="State_Display",
+    title="Defects by State",
+    hole=0.3,
+    color="State_Display",
+    color_discrete_map=state_colors
+)
+pie_fig.update_traces(textinfo="percent+label+value")
+
+# Layout
 app.layout = dhtml.Div([
     dhtml.H1("📊 Defects Dashboard", style={"textAlign": "center"}),
 
-    # ====== DEFECT STATUS TABLE ======
-    dhtml.Div([
-        dhtml.H2("Defects Status", style={"textAlign": "center", "marginBottom": "10px"}),
-        dhtml.Table([
+    # ====== DEFECTS STATUS TABLE ======
+    dhtml.H2("Defects Status", style={"marginBottom": "10px"}),
+
+    dhtml.Table([
+        dhtml.Thead(
             dhtml.Tr([
-                dhtml.Th("New Defects", style={"backgroundColor": "#FF4C4C", "color": "white", "padding": "10px"}),
-                dhtml.Th("Reopen Defects", style={"backgroundColor": "#FFA500", "color": "white", "padding": "10px"}),
-                dhtml.Th("Closed Defects", style={"backgroundColor": "#28A745", "color": "white", "padding": "10px"}),
-                dhtml.Th("Total Reported", style={"backgroundColor": "#007BFF", "color": "white", "padding": "10px"})
-            ]),
-            dhtml.Tr([
-                dhtml.Td(str(total_new), style={"textAlign": "center", "padding": "10px", "fontWeight": "bold", "fontSize": "16px", "color": "#FF4C4C"}),
-                dhtml.Td(str(total_reopen), style={"textAlign": "center", "padding": "10px", "fontWeight": "bold", "fontSize": "16px", "color": "#FFA500"}),
-                dhtml.Td(str(total_closed), style={"textAlign": "center", "padding": "10px", "fontWeight": "bold", "fontSize": "16px", "color": "#28A745"}),
-                dhtml.Td(str(total_reported), style={"textAlign": "center", "padding": "10px", "fontWeight": "bold", "fontSize": "16px", "color": "#007BFF"})
+                dhtml.Th("New Defects"),
+                dhtml.Th("Reopen Defects"),
+                dhtml.Th("Closed Defects"),
+                dhtml.Th("Resolved Defects"),
+                dhtml.Th("Total Defects")
             ])
-        ], style={
-            "width": "80%",
-            "margin": "0 auto",
-            "borderCollapse": "collapse",
-            "marginBottom": "30px",
-            "boxShadow": "0 2px 5px rgba(0,0,0,0.2)"
-        })
-    ]),
+        ),
+        dhtml.Tbody([
+            dhtml.Tr([
+                dhtml.Td(new_count, style={"color": "white", "backgroundColor": "red", "fontWeight": "bold", "textAlign": "center"}),
+                dhtml.Td(reopen_count, style={"color": "white", "backgroundColor": "maroon", "fontWeight": "bold", "textAlign": "center"}),
+                dhtml.Td(closed_count, style={"color": "white", "backgroundColor": "green", "fontWeight": "bold", "textAlign": "center"}),
+                dhtml.Td(resolved_count, style={"color": "white", "backgroundColor": "orange", "fontWeight": "bold", "textAlign": "center"}),
+                dhtml.Td(total_defects, style={"color": "black", "backgroundColor": "lightgrey", "fontWeight": "bold", "textAlign": "center"})
+            ])
+        ])
+    ], style={"width": "80%", "margin": "auto", "marginBottom": "30px", "borderCollapse": "collapse"}),
 
     # ====== CHARTS ======
     dhtml.Div([
-        dcc.Graph(
-            id="pie-chart",
-            figure=px.pie(df, names="State_Display", title="Defects by State", hole=0.3),
-            style={"width": "33%", "height": "320px"}
-        ),
+        dcc.Graph(id="pie-chart", figure=pie_fig, style={"width": "33%", "height": "320px"}),
         dcc.Graph(
             id="bar-chart-state",
-            figure=px.bar(df, x="State_Display", title="Defects Count by State"),
+            figure=px.bar(df, x="State_Display", title="Defects Count by State", color="State_Display",
+                          color_discrete_map=state_colors),
             style={"width": "33%", "height": "320px"}
         ),
         dcc.Graph(
@@ -85,13 +104,6 @@ app.layout = dhtml.Div([
         "flexWrap": "nowrap",
         "marginBottom": "20px"
     }),
-
-    # ====== TOTAL COUNTS UNDER PIE CHART ======
-    dhtml.Div([
-        dhtml.Span(f"New Defects: {total_new}", style={"marginRight": "20px", "color": "#FF4C4C", "fontWeight": "bold"}),
-        dhtml.Span(f"Reopen Defects: {total_reopen}", style={"marginRight": "20px", "color": "#FFA500", "fontWeight": "bold"}),
-        dhtml.Span(f"Closed Defects: {total_closed}", style={"marginRight": "20px", "color": "#28A745", "fontWeight": "bold"})
-    ], style={"textAlign": "center", "marginBottom": "20px"}),
 
     # ====== DEFECT DETAILS ======
     dhtml.H2("🔗 Defects with Details", style={"marginTop": "20px"}),
@@ -183,6 +195,7 @@ def display_links(pie_click, bar_state_click, bar_severity_click):
         groups.append(details_section)
 
     return dhtml.Div([header] + groups, style={"marginTop": "10px"})
+
 
 # Run app
 if __name__ == "__main__":
