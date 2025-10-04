@@ -100,7 +100,7 @@ detail_table = dash_table.DataTable(
     style_table={"overflowX": "auto"},
     style_cell={"textAlign": "left", "padding": "8px", "whiteSpace": "normal"},
     style_header={"backgroundColor": "#f4f4f4", "fontWeight": "bold"},
-    markdown_options={"html": True}  # Safe for older Dash versions
+    markdown_options={"html": True}  # Safe for Dash 3.x
 )
 
 # 🔹 5. Dash App
@@ -134,5 +134,8 @@ app.layout = html.Div([
     detail_table
 ])
 
+# 🔹 6. Run app (compatible with Render.com)
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    import os
+    port = int(os.environ.get("PORT", 8050))
+    app.run(debug=True, host="0.0.0.0", port=port)
