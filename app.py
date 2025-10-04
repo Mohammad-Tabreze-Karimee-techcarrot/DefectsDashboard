@@ -73,7 +73,7 @@ bar_severity_fig = create_severity_fig()
 
 # Layout
 app.layout = dhtml.Div([
-    dhtml.H1("📊 Defects Dashboard", style={"textAlign": "center"}),
+    dhtml.H1("Smart FM Replacement Defects Dashboard", style={"textAlign": "center"}),
 
     dhtml.H2("Defects Status", style={"marginBottom": "10px"}),
     dhtml.Table([
@@ -112,14 +112,13 @@ def display_links_and_highlight(pie_click, bar_state_click, bar_severity_click):
     ctx = callback_context
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else None
 
-    # Reset details table initially
+    # Reset details table initially (only header)
     header = dhtml.Div([
         dhtml.Span("S.No", style={"fontWeight": "bold", "width": "50px", "display": "inline-block"}),
         dhtml.Span("Defect Link", style={"fontWeight": "bold", "width": "150px", "display": "inline-block"}),
         dhtml.Span("Severity", style={"fontWeight": "bold", "width": "150px", "display": "inline-block", "marginLeft": "40px"}),
     ], style={"marginBottom": "10px", "fontFamily": "Courier New, monospace",
               "borderBottom": "2px solid #000", "paddingBottom": "5px"})
-    # By default, show only header
     details_container = dhtml.Div([header], style={"marginTop": "10px"})
 
     filtered = pd.DataFrame()
@@ -140,7 +139,7 @@ def display_links_and_highlight(pie_click, bar_state_click, bar_severity_click):
         filtered["S.No"] = filtered.groupby("Assigned To").cumcount() + 1
 
         groups = []
-        for assigned_to, group in filtered.groupby("Assigned To"):
+        for i, (assigned_to, group) in enumerate(filtered.groupby("Assigned To")):
             defect_rows = [
                 dhtml.Div([
                     dhtml.Span(f"{row['S.No']}", style={"display":"inline-block","width":"50px","fontFamily":"Courier New, monospace"}),
@@ -150,11 +149,12 @@ def display_links_and_highlight(pie_click, bar_state_click, bar_severity_click):
                                                             "fontFamily":"Courier New, monospace","marginLeft":"40px"})
                 ], style={"marginBottom":"4px"}) for _, row in group.iterrows()
             ]
+
             details_section = dhtml.Details([
                 dhtml.Summary(assigned_to, style={"fontWeight":"bold","color":"#007ACC",
                                                   "cursor":"pointer","fontSize":"16px","fontFamily":"Arial"}),
                 dhtml.Div(defect_rows, style={"marginLeft":"20px","marginTop":"6px"})
-            ], open=False)
+            ], open=False, id={"type":"assigned-details","index":i})
             groups.append(details_section)
 
         details_container = dhtml.Div([header]+groups, style={"marginTop":"10px"})
