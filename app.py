@@ -22,12 +22,43 @@ df["State_Display"] = df["State"].replace({"Active": "Reopen"})
 # Filter for open defects only (exclude Closed)
 df_open = df[~df["State"].str.lower().eq("closed")]
 
+# ====== TOTAL COUNTS ======
+total_new = df[df["State"].str.lower() == "new"].shape[0]
+total_reopen = df[df["State"].str.lower() == "active"].shape[0]  # Active == Reopen
+total_closed = df[df["State"].str.lower() == "closed"].shape[0]
+total_reported = df.shape[0]
+
 # Create Dash app
 app = Dash(__name__)
 app.title = "Defects Dashboard"
 
 app.layout = dhtml.Div([
     dhtml.H1("📊 Defects Dashboard", style={"textAlign": "center"}),
+
+    # ====== DEFECT STATUS TABLE ======
+    dhtml.Div([
+        dhtml.H2("Defects Status", style={"textAlign": "center", "marginBottom": "10px"}),
+        dhtml.Table([
+            dhtml.Tr([
+                dhtml.Th("New Defects", style={"backgroundColor": "#FF4C4C", "color": "white", "padding": "10px"}),
+                dhtml.Th("Reopen Defects", style={"backgroundColor": "#FFA500", "color": "white", "padding": "10px"}),
+                dhtml.Th("Closed Defects", style={"backgroundColor": "#28A745", "color": "white", "padding": "10px"}),
+                dhtml.Th("Total Reported", style={"backgroundColor": "#007BFF", "color": "white", "padding": "10px"})
+            ]),
+            dhtml.Tr([
+                dhtml.Td(str(total_new), style={"textAlign": "center", "padding": "10px", "fontWeight": "bold", "fontSize": "16px", "color": "#FF4C4C"}),
+                dhtml.Td(str(total_reopen), style={"textAlign": "center", "padding": "10px", "fontWeight": "bold", "fontSize": "16px", "color": "#FFA500"}),
+                dhtml.Td(str(total_closed), style={"textAlign": "center", "padding": "10px", "fontWeight": "bold", "fontSize": "16px", "color": "#28A745"}),
+                dhtml.Td(str(total_reported), style={"textAlign": "center", "padding": "10px", "fontWeight": "bold", "fontSize": "16px", "color": "#007BFF"})
+            ])
+        ], style={
+            "width": "80%",
+            "margin": "0 auto",
+            "borderCollapse": "collapse",
+            "marginBottom": "30px",
+            "boxShadow": "0 2px 5px rgba(0,0,0,0.2)"
+        })
+    ]),
 
     # ====== CHARTS ======
     dhtml.Div([
@@ -54,6 +85,13 @@ app.layout = dhtml.Div([
         "flexWrap": "nowrap",
         "marginBottom": "20px"
     }),
+
+    # ====== TOTAL COUNTS UNDER PIE CHART ======
+    dhtml.Div([
+        dhtml.Span(f"New Defects: {total_new}", style={"marginRight": "20px", "color": "#FF4C4C", "fontWeight": "bold"}),
+        dhtml.Span(f"Reopen Defects: {total_reopen}", style={"marginRight": "20px", "color": "#FFA500", "fontWeight": "bold"}),
+        dhtml.Span(f"Closed Defects: {total_closed}", style={"marginRight": "20px", "color": "#28A745", "fontWeight": "bold"})
+    ], style={"textAlign": "center", "marginBottom": "20px"}),
 
     # ====== DEFECT DETAILS ======
     dhtml.H2("🔗 Defects with Details", style={"marginTop": "20px"}),
