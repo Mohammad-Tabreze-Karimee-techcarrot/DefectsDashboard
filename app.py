@@ -6,21 +6,45 @@ from dash import Dash, dcc, html as dhtml, Input, Output, callback_context
 # Paths and data
 current_dir = os.path.dirname(os.path.abspath(__file__))
 excel_file = os.path.join(current_dir, "data", "Smart FM Defects through Python.xlsx")
-df = pd.read_excel(excel_file)
+
+# Check if file exists
+if not os.path.exists(excel_file):
+    print(f"Error: Excel file not found at {excel_file}")
+    df = pd.DataFrame(columns=["State", "ID", "Issue Links", "Severity", "Assigned To"])
+else:
+    df = pd.read_excel(excel_file)
 
 required_cols = ["State", "ID", "Issue Links", "Severity", "Assigned To"]
 for col in required_cols:
     if col not in df.columns:
         df[col] = "N/A"
 
+# Clean and standardize the Severity column BEFORE any filtering
+df["Severity"] = df["Severity"].astype(str).str.replace(r"^\d+\s*-\s*", "", regex=True).str.strip()
+
+# Map severity levels including Critical
+severity_map = {
+    "Suggestion": "Suggestion",
+    "Low": "Low",
+    "Medium": "Medium",
+    "High": "High",
+    "Critical": "Critical"
+}
+df["Severity"] = df["Severity"].map(severity_map).fillna("Unknown")
+
+# Create State_Display column (Active -> Reopen)
 df["State_Display"] = df["State"].replace({"Active": "Reopen"})
+
+# Define colors
 state_colors = {"New": "red", "Reopen": "maroon", "Closed": "green", "Resolved": "orange"}
 
-df_open = df[~df["State"].str.lower().eq("closed")]
-severity_order = ["High", "Medium", "Low", "Suggestion"]
-df_open["Severity"] = df_open["Severity"].astype(str).str.replace(r"^\d+\s*-\s*", "", regex=True)
+# Filter for open defects (exclude Closed AND Resolved)
+df_open = df[~df["State"].str.lower().isin(["closed", "resolved"])]
 
-# Aggregate counts for severity
+# Define severity order
+severity_order = ["Critical", "High", "Medium", "Low", "Suggestion"]
+
+# Aggregate counts for severity from OPEN defects only
 severity_counts = df_open["Severity"].value_counts().reindex(severity_order, fill_value=0).reset_index()
 severity_counts.columns = ["Severity", "Count"]
 
@@ -28,14 +52,16 @@ severity_counts.columns = ["Severity", "Count"]
 state_counts_df = df["State_Display"].value_counts().reset_index()
 state_counts_df.columns = ["State_Display", "Count"]
 
+# Calculate summary metrics
 total_defects = len(df)
-new_count = state_counts_df.loc[state_counts_df["State_Display"]=="New", "Count"].sum() if "New" in state_counts_df["State_Display"].values else 0
-reopen_count = state_counts_df.loc[state_counts_df["State_Display"]=="Reopen", "Count"].sum() if "Reopen" in state_counts_df["State_Display"].values else 0
-closed_count = state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum() if "Closed" in state_counts_df["State_Display"].values else 0
-resolved_count = state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum() if "Resolved" in state_counts_df["State_Display"].values else 0
+new_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="New", "Count"].sum()) if "New" in state_counts_df["State_Display"].values else 0
+reopen_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Reopen", "Count"].sum()) if "Reopen" in state_counts_df["State_Display"].values else 0
+closed_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum()) if "Closed" in state_counts_df["State_Display"].values else 0
+resolved_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum()) if "Resolved" in state_counts_df["State_Display"].values else 0
 
 # App
 app = Dash(__name__)
+server = app.server  # THIS LINE IS CRITICAL FOR WAITRESS/PRODUCTION
 app.title = "Smart FM Replacement Defects Dashboard"
 
 # Pie chart
@@ -53,20 +79,36 @@ bar_state_fig = px.bar(state_counts_df, x="State_Display", y="Count",
 bar_state_fig.update_traces(hovertemplate="State: %{x}<br>Defects: %{y}")
 
 def create_severity_fig(selected_severity=None):
-    colors_map = {"High": "red", "Medium": "orange", "Low": "yellow", "Suggestion": "blue"}
-    bar_colors = [colors_map[s] if s != selected_severity else "darkgreen" for s in severity_order]
+    colors_map = {
+        "Critical": "darkred",
+        "High": "red",
+        "Medium": "orange",
+        "Low": "yellow",
+        "Suggestion": "blue"
+    }
+    
+    # Create a copy of severity_counts for this chart
+    chart_data = severity_counts.copy()
+    
+    # Apply highlighting if a severity is selected
+    if selected_severity:
+        bar_colors = [colors_map.get(s, "gray") if s != selected_severity else "darkgreen" for s in chart_data["Severity"]]
+    else:
+        bar_colors = [colors_map.get(s, "gray") for s in chart_data["Severity"]]
+    
     fig = px.bar(
-        severity_counts,
+        chart_data,
         x="Severity",
         y="Count",
         title="Open Defects Count by Severity",
         category_orders={"Severity": severity_order},
         color="Severity",
-        color_discrete_map=dict(zip(severity_order, bar_colors)),
+        color_discrete_map=dict(zip(chart_data["Severity"], bar_colors)),
         text="Count",
         hover_data={"Count": True, "Severity": True}
     )
     fig.update_traces(hovertemplate="Severity: %{x}<br>Open Defects: %{y}")
+    fig.update_layout(showlegend=False)
     return fig
 
 bar_severity_fig = create_severity_fig()
@@ -151,7 +193,7 @@ def display_links_and_highlight(pie_click, bar_state_click, bar_severity_click):
             ]
 
             details_section = dhtml.Details([
-                dhtml.Summary(assigned_to, style={"fontWeight":"bold","color":"#007ACC",
+                dhtml.Summary(assigned_to if assigned_to else "Unassigned", style={"fontWeight":"bold","color":"#007ACC",
                                                   "cursor":"pointer","fontSize":"16px","fontFamily":"Arial"}),
                 dhtml.Div(defect_rows, style={"marginLeft":"20px","marginTop":"6px"})
             ], open=False, id={"type":"assigned-details","index":i})
@@ -161,7 +203,7 @@ def display_links_and_highlight(pie_click, bar_state_click, bar_severity_click):
 
     return details_container, create_severity_fig(selected_severity)
 
-# Run
+# Run (only for local development)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
     app.run(host="0.0.0.0", port=port, debug=False)
