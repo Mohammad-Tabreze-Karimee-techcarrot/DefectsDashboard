@@ -1,18 +1,14 @@
 #!/bin/bash
-
 echo "🚀 Starting deployment process..."
 
-# Run the defects extraction first
-echo "📥 Extracting defects from DevOps..."
+# Run DevOps extraction
+echo "📥 Extracting defects from Azure DevOps..."
 python defectsextraction.py
 
-# Check if extraction was successful
-if [ $? -eq 0 ]; then
-    echo "✅ Defects extraction completed successfully"
-else
-    echo "⚠️ Warning: Defects extraction had issues, but continuing..."
-fi
+# Run Jira extraction
+echo "📥 Extracting defects from Jira..."
+python jiraextraction.py
 
-# Start the Dash app using waitress (production server)
+echo "✅ All extractions completed"
 echo "🌐 Starting dashboard server..."
 python -m waitress --host=0.0.0.0 --port=$PORT app:server
