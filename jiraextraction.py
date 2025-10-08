@@ -4,6 +4,7 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 import os
 import time
+import json
 
 # Jira Configuration
 jira_url = os.getenv("JIRA_URL", "https://your-domain.atlassian.net")
@@ -36,7 +37,7 @@ print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
 # Jira API v3 endpoint
-search_url = f"{jira_url}/rest/api/3/search"
+search_url = f"{jira_url}/rest/api/3/search/jql"
 
 # Prepare request
 headers = {
@@ -53,7 +54,7 @@ all_issues = []
 
 # Fetch all issues (handle pagination)
 while True:
-    params = {
+    payload = {
         'jql': jql_query,
         'startAt': start_at,
         'maxResults': max_results,
@@ -61,7 +62,7 @@ while True:
     }
     
     try:
-        response = requests.get(search_url, headers=headers, auth=auth, params=params, timeout=30)
+        response = requests.post(search_url, headers=headers, auth=auth, data=json.dumps(payload), timeout=30)
         
         if response.status_code != 200:
             print(f"❌ Error fetching issues: {response.status_code} - {response.text}")

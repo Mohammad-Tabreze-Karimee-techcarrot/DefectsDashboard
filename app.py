@@ -18,7 +18,6 @@ data_folder = os.path.join(current_dir, "data")
 PROJECTS = {
     "Smart FM (DevOps)": "Smart FM Defects through Python.xlsx",
     "Timesheet (Jira)": "Jira PROJ Defects.xlsx",
-    # Add more projects here as needed
 }
 
 def load_data(project_name):
