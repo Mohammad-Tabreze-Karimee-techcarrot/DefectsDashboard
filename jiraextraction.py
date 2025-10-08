@@ -4,7 +4,6 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 import os
 import time
-import json
 
 # Jira Configuration
 jira_url = os.getenv("JIRA_URL", "https://your-domain.atlassian.net")
@@ -26,7 +25,7 @@ STATE_MAPPING = {
 print("🔄 Starting Jira defects extraction...")
 start_time = time.time()
 
-# JQL query with proper quoting for project names with spaces
+# JQL query - using GET method with query parameters instead of POST
 # FIXED: Wrap project key in quotes if it contains spaces
 if ' ' in jira_project_key:
     jql_query = f'project = "{jira_project_key}" AND type = Bug ORDER BY created DESC'
@@ -36,15 +35,10 @@ else:
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
-# Jira API v3 endpoint
+# Jira API v2 endpoint (more compatible)
 search_url = f"{jira_url}/rest/api/3/search/jql"
 
-# Prepare request
-headers = {
-    "Accept": "application/json",
-    "Content-Type": "application/json"
-}
-
+# Prepare authentication
 auth = HTTPBasicAuth(jira_email, jira_api_token)
 
 # Pagination parameters
@@ -52,17 +46,21 @@ start_at = 0
 max_results = 100
 all_issues = []
 
-# Fetch all issues (handle pagination)
+# Fetch all issues (handle pagination) - Using GET method
 while True:
-    payload = {
+    # Query parameters for GET request
+    params = {
         'jql': jql_query,
         'startAt': start_at,
         'maxResults': max_results,
-        'fields': 'summary,status,assignee,priority,created,updated,issuetype,labels'
+        'fields': 'status,assignee,priority,created,updated'  # Removed issuetype, labels, changed summary to work
     }
     
+    # Add 'work' field if available (custom field for description/work)
+    # Note: 'work' might be a custom field, we'll try to get it
+    
     try:
-        response = requests.post(search_url, headers=headers, auth=auth, data=json.dumps(payload), timeout=30)
+        response = requests.get(search_url, params=params, auth=auth, timeout=30)
         
         if response.status_code != 200:
             print(f"❌ Error fetching issues: {response.status_code} - {response.text}")
@@ -106,20 +104,32 @@ for idx, issue in enumerate(all_issues, start=2):
     fields = issue.get('fields', {})
     
     # Extract fields
-    issue_type = fields.get('issuetype', {}).get('name', 'Bug')
-    summary = fields.get('summary', '')
+    issue_type = "Bug"  # Default to Bug since issuetype is not available
+    
+    # Title - Try multiple fields: work, summary, or use issue key
+    title = fields.get('work', '') or fields.get('summary', '') or issue_key
     
     # Status - Get original and map to Azure DevOps state
-    jira_status = fields.get('status', {}).get('name', 'Unknown')
+    status_field = fields.get('status', {})
+    jira_status = status_field.get('name', 'Unknown') if isinstance(status_field, dict) else str(status_field)
     mapped_state = STATE_MAPPING.get(jira_status, jira_status)
     
     # Assignee
     assignee = fields.get('assignee', {})
-    assignee_name = assignee.get('displayName', '') if assignee else 'Unassigned'
+    if isinstance(assignee, dict):
+        assignee_name = assignee.get('displayName', '') or assignee.get('name', '')
+    else:
+        assignee_name = str(assignee) if assignee else ''
+    
+    if not assignee_name:
+        assignee_name = 'Unassigned'
     
     # Priority (map to Severity)
     priority = fields.get('priority', {})
-    priority_name = priority.get('name', 'Medium') if priority else 'Medium'
+    if isinstance(priority, dict):
+        priority_name = priority.get('name', 'Medium')
+    else:
+        priority_name = str(priority) if priority else 'Medium'
     
     # Map Jira priority to DevOps-style severity
     severity_map = {
@@ -131,9 +141,8 @@ for idx, issue in enumerate(all_issues, start=2):
     }
     severity = severity_map.get(priority_name, f'3 - {priority_name}')
     
-    # Labels/Tags
-    labels = fields.get('labels', [])
-    tags = ', '.join(labels) if labels else ''
+    # Tags - empty since labels are not available
+    tags = ''
     
     # Issue URL
     issue_url = f"{jira_url}/browse/{issue_key}"
@@ -141,7 +150,7 @@ for idx, issue in enumerate(all_issues, start=2):
     # Write to Excel
     sheet.cell(row=idx, column=1, value=issue_key)
     sheet.cell(row=idx, column=2, value=issue_type)
-    sheet.cell(row=idx, column=3, value=summary)
+    sheet.cell(row=idx, column=3, value=title)
     sheet.cell(row=idx, column=4, value=mapped_state)
     sheet.cell(row=idx, column=5, value=jira_status)
     sheet.cell(row=idx, column=6, value=assignee_name)
