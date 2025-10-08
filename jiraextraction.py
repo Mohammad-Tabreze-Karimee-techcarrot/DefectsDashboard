@@ -11,6 +11,17 @@ jira_email = os.getenv("JIRA_EMAIL")  # Your Jira email
 jira_api_token = os.getenv("JIRA_API_TOKEN")  # Jira API token (not password!)
 jira_project_key = os.getenv("JIRA_PROJECT_KEY", "PROJ")  # Your project key, e.g., "FM", "ONEAPP"
 
+# State mapping from Jira to Azure DevOps
+STATE_MAPPING = {
+    "Open": "New",
+    "To Do": "Reopen",
+    "In Progress": "New",
+    "In Development": "New",
+    "Done": "Closed",
+    "Closed": "Closed",
+    "Resolved": "Resolved"
+}
+
 print("🔄 Starting Jira defects extraction...")
 start_time = time.time()
 
@@ -24,12 +35,13 @@ jql_query = f'project = {jira_project_key} AND type = Bug ORDER BY created DESC'
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
-# Jira API endpoint
+# Jira API v3 endpoint (FIXED)
 search_url = f"{jira_url}/rest/api/3/search"
 
 # Prepare request
 headers = {
-    "Accept": "application/json"
+    "Accept": "application/json",
+    "Content-Type": "application/json"
 }
 
 auth = HTTPBasicAuth(jira_email, jira_api_token)
@@ -45,7 +57,7 @@ while True:
         'jql': jql_query,
         'startAt': start_at,
         'maxResults': max_results,
-        'fields': 'summary,status,assignee,priority,created,updated,issuetype,customfield_*'
+        'fields': 'summary,status,assignee,priority,created,updated,issuetype,labels,customfield_*'
     }
     
     try:
@@ -85,7 +97,7 @@ print(f"✅ Found {len(all_issues)} issues. Processing...")
 wb = openpyxl.Workbook()
 sheet = wb.active
 sheet.title = "Jira Defects"
-sheet.append(["ID", "Work Item Type", "Title", "State", "Assigned To", "Tags", "Severity", "Issue Links"])
+sheet.append(["ID", "Work Item Type", "Title", "State", "Original Jira State", "Assigned To", "Tags", "Severity", "Issue Links"])
 
 # Process each issue
 for idx, issue in enumerate(all_issues, start=2):
@@ -95,7 +107,10 @@ for idx, issue in enumerate(all_issues, start=2):
     # Extract fields
     issue_type = fields.get('issuetype', {}).get('name', 'Bug')
     summary = fields.get('summary', '')
-    status = fields.get('status', {}).get('name', '')
+    
+    # Status - Get original and map to Azure DevOps state
+    jira_status = fields.get('status', {}).get('name', 'Unknown')
+    mapped_state = STATE_MAPPING.get(jira_status, jira_status)  # Use original if not in mapping
     
     # Assignee
     assignee = fields.get('assignee', {})
@@ -126,14 +141,15 @@ for idx, issue in enumerate(all_issues, start=2):
     sheet.cell(row=idx, column=1, value=issue_key)
     sheet.cell(row=idx, column=2, value=issue_type)
     sheet.cell(row=idx, column=3, value=summary)
-    sheet.cell(row=idx, column=4, value=status)
-    sheet.cell(row=idx, column=5, value=assignee_name)
-    sheet.cell(row=idx, column=6, value=tags)
-    sheet.cell(row=idx, column=7, value=severity)
-    sheet.cell(row=idx, column=8, value=issue_url)
+    sheet.cell(row=idx, column=4, value=mapped_state)  # Mapped state
+    sheet.cell(row=idx, column=5, value=jira_status)   # Original Jira state
+    sheet.cell(row=idx, column=6, value=assignee_name)
+    sheet.cell(row=idx, column=7, value=tags)
+    sheet.cell(row=idx, column=8, value=severity)
+    sheet.cell(row=idx, column=9, value=issue_url)
 
 # Adjust column widths
-for col in range(1, 9):
+for col in range(1, 10):
     sheet.column_dimensions[get_column_letter(col)].width = 40
 
 # Save Excel
