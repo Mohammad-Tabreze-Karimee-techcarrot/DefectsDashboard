@@ -6,10 +6,10 @@ import os
 import time
 
 # Jira Configuration
-jira_url = os.getenv("JIRA_URL", "https://your-domain.atlassian.net")  # e.g., https://yourcompany.atlassian.net
-jira_email = os.getenv("JIRA_EMAIL")  # Your Jira email
-jira_api_token = os.getenv("JIRA_API_TOKEN")  # Jira API token (not password!)
-jira_project_key = os.getenv("JIRA_PROJECT_KEY", "PROJ")  # Your project key, e.g., "FM", "ONEAPP"
+jira_url = os.getenv("JIRA_URL", "https://your-domain.atlassian.net")
+jira_email = os.getenv("JIRA_EMAIL")
+jira_api_token = os.getenv("JIRA_API_TOKEN")
+jira_project_key = os.getenv("JIRA_PROJECT_KEY", "PROJ")
 
 # State mapping from Jira to Azure DevOps
 STATE_MAPPING = {
@@ -25,17 +25,17 @@ STATE_MAPPING = {
 print("🔄 Starting Jira defects extraction...")
 start_time = time.time()
 
-# JQL query to fetch defects/bugs
-# Modify this JQL based on your needs
-jql_query = f'project = {jira_project_key} AND type = Bug ORDER BY created DESC'
-
-# You can also use more complex queries like:
-# jql_query = f'project = {jira_project_key} AND type in (Bug, Defect) AND status != Canceled ORDER BY priority DESC'
+# JQL query with proper quoting for project names with spaces
+# FIXED: Wrap project key in quotes if it contains spaces
+if ' ' in jira_project_key:
+    jql_query = f'project = "{jira_project_key}" AND type = Bug ORDER BY created DESC'
+else:
+    jql_query = f'project = {jira_project_key} AND type = Bug ORDER BY created DESC'
 
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
-# Jira API v3 endpoint (FIXED)
+# Jira API v3 endpoint
 search_url = f"{jira_url}/rest/api/3/search"
 
 # Prepare request
@@ -57,7 +57,7 @@ while True:
         'jql': jql_query,
         'startAt': start_at,
         'maxResults': max_results,
-        'fields': 'summary,status,assignee,priority,created,updated,issuetype,labels,customfield_*'
+        'fields': 'summary,status,assignee,priority,created,updated,issuetype,labels'
     }
     
     try:
@@ -110,7 +110,7 @@ for idx, issue in enumerate(all_issues, start=2):
     
     # Status - Get original and map to Azure DevOps state
     jira_status = fields.get('status', {}).get('name', 'Unknown')
-    mapped_state = STATE_MAPPING.get(jira_status, jira_status)  # Use original if not in mapping
+    mapped_state = STATE_MAPPING.get(jira_status, jira_status)
     
     # Assignee
     assignee = fields.get('assignee', {})
@@ -141,8 +141,8 @@ for idx, issue in enumerate(all_issues, start=2):
     sheet.cell(row=idx, column=1, value=issue_key)
     sheet.cell(row=idx, column=2, value=issue_type)
     sheet.cell(row=idx, column=3, value=summary)
-    sheet.cell(row=idx, column=4, value=mapped_state)  # Mapped state
-    sheet.cell(row=idx, column=5, value=jira_status)   # Original Jira state
+    sheet.cell(row=idx, column=4, value=mapped_state)
+    sheet.cell(row=idx, column=5, value=jira_status)
     sheet.cell(row=idx, column=6, value=assignee_name)
     sheet.cell(row=idx, column=7, value=tags)
     sheet.cell(row=idx, column=8, value=severity)

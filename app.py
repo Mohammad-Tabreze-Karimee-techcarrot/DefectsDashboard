@@ -14,12 +14,11 @@ import glob
 current_dir = os.path.dirname(os.path.abspath(__file__))
 data_folder = os.path.join(current_dir, "data")
 
-# Define your projects
+# Define your projects (no 'ALL' option)
 PROJECTS = {
     "Smart FM (DevOps)": "Smart FM Defects through Python.xlsx",
-    "Jira Project 1": "Jira PROJ Defects.xlsx",
+    "Timesheet (Jira)": "Jira PROJ Defects.xlsx",
     # Add more projects here as needed
-    # "Jira Project 2": "Jira PROJ2 Defects.xlsx",
 }
 
 def load_data(project_name):
@@ -33,10 +32,8 @@ def load_data(project_name):
     df = pd.read_excel(excel_file)
     
     # Handle different column structures (DevOps vs Jira)
-    # Jira files have "Original Jira State" column, DevOps doesn't
     if "Original Jira State" in df.columns:
         # This is a Jira file - State column already has mapped values
-        # We'll use State_Display = State for consistency
         df["State_Display"] = df["State"]
     else:
         # This is a DevOps file - need to map states
@@ -67,19 +64,6 @@ def load_data(project_name):
     df["Severity"] = df["Severity"].map(severity_map).fillna("Unknown")
     
     return df
-
-def load_all_projects():
-    """Load data from all projects and combine"""
-    all_data = []
-    for project_name in PROJECTS.keys():
-        df = load_data(project_name)
-        df["Project"] = project_name
-        all_data.append(df)
-    
-    if all_data:
-        combined_df = pd.concat(all_data, ignore_index=True)
-        return combined_df
-    return pd.DataFrame()
 
 def refresh_data_from_sources():
     """Run extraction scripts for all data sources"""
@@ -139,15 +123,14 @@ app.layout = dhtml.Div([
                                             "fontSize": "14px", "marginBottom": "20px"})
     ]),
     
-    # Project Selector
+    # Project Selector (No 'ALL' option)
     dhtml.Div([
         dhtml.Label("Select Project:", style={"fontWeight": "bold", "marginRight": "10px", 
                                                "fontSize": "16px", "color": "#2c3e50"}),
         dcc.Dropdown(
             id='project-selector',
-            options=[{'label': 'All Projects (Combined)', 'value': 'ALL'}] + 
-                    [{'label': name, 'value': name} for name in PROJECTS.keys()],
-            value='ALL',
+            options=[{'label': name, 'value': name} for name in PROJECTS.keys()],
+            value=list(PROJECTS.keys())[0],  # Default to first project
             style={"width": "400px", "display": "inline-block"}
         )
     ], style={"textAlign": "center", "marginBottom": "30px"}),
@@ -178,12 +161,7 @@ app.layout = dhtml.Div([
      Input('project-selector', 'value')]
 )
 def update_data_store(n, selected_project):
-    if selected_project == 'ALL':
-        df = load_all_projects()
-    else:
-        df = load_data(selected_project)
-        df["Project"] = selected_project
-    
+    df = load_data(selected_project)
     return df.to_json(date_format='iso', orient='split')
 
 # Main callback
@@ -228,7 +206,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     closed_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum()) if "Closed" in state_counts_df["State_Display"].values else 0
     resolved_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum()) if "Resolved" in state_counts_df["State_Display"].values else 0
     
-    # Status Table
+    # Status Table (Original UI preserved)
     status_table = dhtml.Div([
         dhtml.Div([
             dhtml.Div([
@@ -311,7 +289,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             filter_applied = True
             new_scroll_count += 1
     
-    # Generate links
+    # Generate links (Original format preserved)
     links_list = []
     for _, row in filtered_df.iterrows():
         state_style = {
@@ -329,10 +307,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             "Suggestion": {"backgroundColor": "#17a2b8", "color": "white"}
         }.get(row.get("Severity", ""), {"backgroundColor": "#6c757d", "color": "white"})
         
-        project_name = row.get("Project", "Unknown")
-        
         link_item = dhtml.Div([
-            dhtml.Span(f"[{project_name}] ", style={"fontWeight": "bold", "color": "#6c757d", "marginRight": "10px"}),
             dhtml.Span(f"{row.get('ID', 'N/A')}", style={"fontWeight": "bold", "marginRight": "10px", "color": "#2c3e50"}),
             dhtml.Span(row.get("State_Display", "N/A"), style={
                 "padding": "3px 8px", "borderRadius": "4px", "marginRight": "10px",
