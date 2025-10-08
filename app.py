@@ -1,160 +1,286 @@
 import os
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from dash import Dash, dcc, html as dhtml, Input, Output, callback_context
+from datetime import datetime
+import subprocess
+import threading
+import time
 
 # Paths and data
 current_dir = os.path.dirname(os.path.abspath(__file__))
 excel_file = os.path.join(current_dir, "data", "Smart FM Defects through Python.xlsx")
 
-# Check if file exists
-if not os.path.exists(excel_file):
-    print(f"Error: Excel file not found at {excel_file}")
-    df = pd.DataFrame(columns=["State", "ID", "Issue Links", "Severity", "Assigned To"])
-else:
+def load_data():
+    """Load data from Excel file"""
+    if not os.path.exists(excel_file):
+        print(f"Error: Excel file not found at {excel_file}")
+        return pd.DataFrame(columns=["State", "ID", "Issue Links", "Severity", "Assigned To"])
+    
     df = pd.read_excel(excel_file)
+    required_cols = ["State", "ID", "Issue Links", "Severity", "Assigned To"]
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = "N/A"
+    
+    # Clean and standardize the Severity column BEFORE any filtering
+    df["Severity"] = df["Severity"].astype(str).str.replace(r"^\d+\s*-\s*", "", regex=True).str.strip()
+    
+    # Map severity levels including Critical
+    severity_map = {
+        "Suggestion": "Suggestion",
+        "Low": "Low",
+        "Medium": "Medium",
+        "High": "High",
+        "Critical": "Critical"
+    }
+    df["Severity"] = df["Severity"].map(severity_map).fillna("Unknown")
+    
+    # Create State_Display column (Active -> Reopen)
+    df["State_Display"] = df["State"].replace({"Active": "Reopen"})
+    
+    return df
 
-required_cols = ["State", "ID", "Issue Links", "Severity", "Assigned To"]
-for col in required_cols:
-    if col not in df.columns:
-        df[col] = "N/A"
+def refresh_data_from_devops():
+    """Run the defects extraction script"""
+    try:
+        print(f"🔄 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Refreshing data from DevOps...")
+        extraction_script = os.path.join(current_dir, "defectsextraction.py")
+        subprocess.run(["python", extraction_script], check=True)
+        print(f"✅ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Data refresh completed")
+    except Exception as e:
+        print(f"❌ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Error refreshing data: {str(e)}")
 
-# Clean and standardize the Severity column BEFORE any filtering
-df["Severity"] = df["Severity"].astype(str).str.replace(r"^\d+\s*-\s*", "", regex=True).str.strip()
+def schedule_data_refresh():
+    """Background thread to refresh data every 5 minutes"""
+    while True:
+        time.sleep(300)  # 5 minutes
+        refresh_data_from_devops()
 
-# Map severity levels including Critical
-severity_map = {
-    "Suggestion": "Suggestion",
-    "Low": "Low",
-    "Medium": "Medium",
-    "High": "High",
-    "Critical": "Critical"
-}
-df["Severity"] = df["Severity"].map(severity_map).fillna("Unknown")
-
-# Create State_Display column (Active -> Reopen)
-df["State_Display"] = df["State"].replace({"Active": "Reopen"})
+# Start background refresh thread
+refresh_thread = threading.Thread(target=schedule_data_refresh, daemon=True)
+refresh_thread.start()
 
 # Define colors
-state_colors = {"New": "red", "Reopen": "maroon", "Closed": "green", "Resolved": "orange"}
-
-# Filter for open defects (exclude Closed AND Resolved)
-df_open = df[~df["State"].str.lower().isin(["closed", "resolved"])]
-
-# Define severity order
+state_colors = {"New": "#dc3545", "Reopen": "#7d1e2b", "Closed": "#28a745", "Resolved": "#fd7e14"}
 severity_order = ["Critical", "High", "Medium", "Low", "Suggestion"]
-
-# Aggregate counts for severity from OPEN defects only
-severity_counts = df_open["Severity"].value_counts().reindex(severity_order, fill_value=0).reset_index()
-severity_counts.columns = ["Severity", "Count"]
-
-# Aggregate counts for state
-state_counts_df = df["State_Display"].value_counts().reset_index()
-state_counts_df.columns = ["State_Display", "Count"]
-
-# Calculate summary metrics
-total_defects = len(df)
-new_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="New", "Count"].sum()) if "New" in state_counts_df["State_Display"].values else 0
-reopen_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Reopen", "Count"].sum()) if "Reopen" in state_counts_df["State_Display"].values else 0
-closed_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum()) if "Closed" in state_counts_df["State_Display"].values else 0
-resolved_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum()) if "Resolved" in state_counts_df["State_Display"].values else 0
 
 # App
 app = Dash(__name__)
 server = app.server  # THIS LINE IS CRITICAL FOR WAITRESS/PRODUCTION
 app.title = "Smart FM Replacement Defects Dashboard"
 
-# Pie chart
-pie_fig = px.pie(df, names="State_Display", title="Defects by State", hole=0.3,
-                 color="State_Display", color_discrete_map=state_colors)
-pie_fig.update_traces(textinfo="percent+label+value")
-
-# Bar chart by state with correct counts
-bar_state_fig = px.bar(state_counts_df, x="State_Display", y="Count",
-                       title="Defects Count by State",
-                       color="State_Display",
-                       color_discrete_map=state_colors,
-                       text="Count",
-                       hover_data={"Count": True, "State_Display": True})
-bar_state_fig.update_traces(hovertemplate="State: %{x}<br>Defects: %{y}")
-
-def create_severity_fig(selected_severity=None):
-    colors_map = {
-        "Critical": "darkred",
-        "High": "red",
-        "Medium": "orange",
-        "Low": "yellow",
-        "Suggestion": "blue"
-    }
-    
-    # Create a copy of severity_counts for this chart
-    chart_data = severity_counts.copy()
-    
-    # Apply highlighting if a severity is selected
-    if selected_severity:
-        bar_colors = [colors_map.get(s, "gray") if s != selected_severity else "darkgreen" for s in chart_data["Severity"]]
-    else:
-        bar_colors = [colors_map.get(s, "gray") for s in chart_data["Severity"]]
-    
-    fig = px.bar(
-        chart_data,
-        x="Severity",
-        y="Count",
-        title="Open Defects Count by Severity",
-        category_orders={"Severity": severity_order},
-        color="Severity",
-        color_discrete_map=dict(zip(chart_data["Severity"], bar_colors)),
-        text="Count",
-        hover_data={"Count": True, "Severity": True}
-    )
-    fig.update_traces(hovertemplate="Severity: %{x}<br>Open Defects: %{y}")
-    fig.update_layout(showlegend=False)
-    return fig
-
-bar_severity_fig = create_severity_fig()
-
 # Layout
 app.layout = dhtml.Div([
-    dhtml.H1("Smart FM Replacement Defects Dashboard", style={"textAlign": "center"}),
+    dcc.Interval(
+        id='interval-component',
+        interval=300*1000,  # Refresh every 5 minutes (in milliseconds)
+        n_intervals=0
+    ),
+    dcc.Store(id='data-store'),  # Store for data
+    
+    dhtml.Div([
+        dhtml.H1("Smart FM Replacement Defects Dashboard", 
+                style={"textAlign": "center", "color": "#2c3e50", "marginBottom": "10px",
+                       "fontFamily": "Arial, sans-serif", "fontWeight": "bold"}),
+        dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#7f8c8d", 
+                                            "fontSize": "14px", "marginBottom": "20px"})
+    ]),
 
-    dhtml.H2("Defects Status", style={"marginBottom": "10px"}),
-    dhtml.Table([
-        dhtml.Thead(dhtml.Tr([dhtml.Th("New Defects"), dhtml.Th("Reopen Defects"),
-                              dhtml.Th("Closed Defects"), dhtml.Th("Resolved Defects"),
-                              dhtml.Th("Total Defects")])),
-        dhtml.Tbody(dhtml.Tr([
-            dhtml.Td(new_count, style={"color": "white", "backgroundColor": "red", "fontWeight": "bold", "textAlign": "center"}),
-            dhtml.Td(reopen_count, style={"color": "white", "backgroundColor": "maroon", "fontWeight": "bold", "textAlign": "center"}),
-            dhtml.Td(closed_count, style={"color": "white", "backgroundColor": "green", "fontWeight": "bold", "textAlign": "center"}),
-            dhtml.Td(resolved_count, style={"color": "white", "backgroundColor": "orange", "fontWeight": "bold", "textAlign": "center"}),
-            dhtml.Td(total_defects, style={"color": "black", "backgroundColor": "lightgrey", "fontWeight": "bold", "textAlign": "center"})
-        ]))
-    ], style={"width": "80%", "margin": "auto", "marginBottom": "30px", "borderCollapse": "collapse"}),
+    dhtml.Div(id="status-table"),
 
     dhtml.Div([
-        dcc.Graph(id="pie-chart", figure=pie_fig, style={"width": "33%", "height": "320px"}),
-        dcc.Graph(id="bar-chart-state", figure=bar_state_fig, style={"width": "33%", "height": "320px"}),
-        dcc.Graph(id="bar-chart-severity", figure=bar_severity_fig, style={"width": "33%", "height": "320px"})
+        dcc.Graph(id="pie-chart", style={"width": "33%", "height": "400px"}),
+        dcc.Graph(id="bar-chart-state", style={"width": "33%", "height": "400px"}),
+        dcc.Graph(id="bar-chart-severity", style={"width": "33%", "height": "400px"})
     ], style={"display": "flex", "flexDirection": "row", "justifyContent": "space-between",
-              "alignItems": "flex-start", "flexWrap": "nowrap", "marginBottom": "20px"}),
+              "alignItems": "flex-start", "flexWrap": "nowrap", "marginBottom": "30px",
+              "padding": "0 20px"}),
 
-    dhtml.H2("🔗 Defects with Details", style={"marginTop": "20px"}),
-    dhtml.Div(id="links-container", style={"marginTop": "20px"})
-])
+    dhtml.H2("🔗 Defects with Details", 
+            style={"marginTop": "30px", "marginLeft": "20px", "color": "#2c3e50",
+                   "fontFamily": "Arial, sans-serif", "fontWeight": "bold"}),
+    dhtml.Div(id="links-container", style={"marginTop": "20px", "padding": "0 20px"})
+], style={"backgroundColor": "#f8f9fa", "minHeight": "100vh", "padding": "20px 0"})
 
-# Callback
+# Callback to load data
 @app.callback(
-    [Output("links-container", "children"),
-     Output("bar-chart-severity", "figure")],
-    [Input("pie-chart", "clickData"),
+    Output('data-store', 'data'),
+    [Input('interval-component', 'n_intervals')]
+)
+def update_data_store(n):
+    df = load_data()
+    return df.to_json(date_format='iso', orient='split')
+
+# Main callback
+@app.callback(
+    [Output("status-table", "children"),
+     Output("pie-chart", "figure"),
+     Output("bar-chart-state", "figure"),
+     Output("bar-chart-severity", "figure"),
+     Output("links-container", "children"),
+     Output("last-updated", "children")],
+    [Input('data-store', 'data'),
+     Input("pie-chart", "clickData"),
      Input("bar-chart-state", "clickData"),
      Input("bar-chart-severity", "clickData")]
 )
-def display_links_and_highlight(pie_click, bar_state_click, bar_severity_click):
+def update_all(json_data, pie_click, bar_state_click, bar_severity_click):
+    if not json_data:
+        return None, {}, {}, {}, None, ""
+    
+    df = pd.read_json(json_data, orient='split')
+    
+    # Define colors
+    state_colors = {"New": "#dc3545", "Reopen": "#7d1e2b", "Closed": "#28a745", "Resolved": "#fd7e14"}
+    
+    # Filter for open defects (exclude Closed AND Resolved)
+    df_open = df[~df["State"].str.lower().isin(["closed", "resolved"])]
+    
+    # Aggregate counts for severity from OPEN defects only
+    severity_counts = df_open["Severity"].value_counts().reindex(severity_order, fill_value=0).reset_index()
+    severity_counts.columns = ["Severity", "Count"]
+    
+    # Aggregate counts for state
+    state_counts_df = df["State_Display"].value_counts().reset_index()
+    state_counts_df.columns = ["State_Display", "Count"]
+    
+    # Calculate summary metrics
+    total_defects = len(df)
+    new_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="New", "Count"].sum()) if "New" in state_counts_df["State_Display"].values else 0
+    reopen_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Reopen", "Count"].sum()) if "Reopen" in state_counts_df["State_Display"].values else 0
+    closed_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum()) if "Closed" in state_counts_df["State_Display"].values else 0
+    resolved_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum()) if "Resolved" in state_counts_df["State_Display"].values else 0
+    
+    # Status Table
+    status_table = dhtml.Table([
+        dhtml.Thead(dhtml.Tr([
+            dhtml.Th("New Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"}), 
+            dhtml.Th("Reopen Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"}),
+            dhtml.Th("Closed Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"}), 
+            dhtml.Th("Resolved Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"}),
+            dhtml.Th("Total Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"})
+        ])),
+        dhtml.Tbody(dhtml.Tr([
+            dhtml.Td(new_count, style={"color": "white", "backgroundColor": "#dc3545", "fontWeight": "bold", 
+                                      "textAlign": "center", "padding": "20px", "fontSize": "24px"}),
+            dhtml.Td(reopen_count, style={"color": "white", "backgroundColor": "#7d1e2b", "fontWeight": "bold", 
+                                         "textAlign": "center", "padding": "20px", "fontSize": "24px"}),
+            dhtml.Td(closed_count, style={"color": "white", "backgroundColor": "#28a745", "fontWeight": "bold", 
+                                         "textAlign": "center", "padding": "20px", "fontSize": "24px"}),
+            dhtml.Td(resolved_count, style={"color": "white", "backgroundColor": "#fd7e14", "fontWeight": "bold", 
+                                           "textAlign": "center", "padding": "20px", "fontSize": "24px"}),
+            dhtml.Td(total_defects, style={"color": "white", "backgroundColor": "#6c757d", "fontWeight": "bold", 
+                                          "textAlign": "center", "padding": "20px", "fontSize": "24px"})
+        ]))
+    ], style={"width": "90%", "margin": "auto", "marginBottom": "40px", "borderCollapse": "collapse",
+              "boxShadow": "0 4px 6px rgba(0,0,0,0.1)", "borderRadius": "8px", "overflow": "hidden"})
+    
+    # Pie chart with enhanced styling
+    pie_fig = px.pie(df, names="State_Display", title="<b>Defects by State</b>", hole=0.4,
+                     color="State_Display", color_discrete_map=state_colors)
+    pie_fig.update_traces(textinfo="percent+label+value", textfont_size=14)
+    pie_fig.update_layout(
+        title_font=dict(size=20, family="Arial, sans-serif", color="#2c3e50"),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        margin=dict(t=80, b=40, l=40, r=40),
+        hoverlabel=dict(bgcolor="white", font_size=14)
+    )
+    
+    # Determine which state/severity is selected
     ctx = callback_context
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else None
-
-    # Reset details table initially (only header)
+    selected_state = None
+    selected_severity = None
+    
+    if triggered_id == "pie-chart" and pie_click:
+        selected_state = pie_click["points"][0]["label"]
+    elif triggered_id == "bar-chart-state" and bar_state_click:
+        selected_state = bar_state_click["points"][0]["x"]
+    elif triggered_id == "bar-chart-severity" and bar_severity_click:
+        selected_severity = bar_severity_click["points"][0]["x"]
+    
+    # Bar chart by state with selection indicator
+    bar_state_fig = go.Figure()
+    for state in state_counts_df["State_Display"]:
+        count = state_counts_df.loc[state_counts_df["State_Display"]==state, "Count"].values[0]
+        is_selected = (selected_state == state)
+        
+        bar_state_fig.add_trace(go.Bar(
+            x=[state],
+            y=[count],
+            name=state,
+            marker=dict(
+                color=state_colors.get(state, "#6c757d"),
+                line=dict(color="#000000", width=4) if is_selected else dict(color=state_colors.get(state, "#6c757d"), width=0)
+            ),
+            text=[count],
+            textposition='outside',
+            textfont=dict(size=14, color="#2c3e50", family="Arial"),
+            hovertemplate=f"<b>{state}</b><br>Defects: {count}<extra></extra>"
+        ))
+    
+    bar_state_fig.update_layout(
+        title="<b>Defects Count by State</b>",
+        title_font=dict(size=20, family="Arial, sans-serif", color="#2c3e50"),
+        xaxis_title="State",
+        yaxis_title="Count",
+        showlegend=False,
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#f8f9fa",
+        margin=dict(t=80, b=60, l=60, r=40),
+        xaxis=dict(tickfont=dict(size=13, color="#2c3e50")),
+        yaxis=dict(tickfont=dict(size=12, color="#2c3e50"), gridcolor="#e9ecef"),
+        bargap=0.3,
+        hoverlabel=dict(bgcolor="white", font_size=14)
+    )
+    
+    # Bar chart by severity with selection indicator
+    colors_map = {
+        "Critical": "#8B0000",
+        "High": "#dc3545",
+        "Medium": "#fd7e14",
+        "Low": "#ffc107",
+        "Suggestion": "#17a2b8"
+    }
+    
+    bar_severity_fig = go.Figure()
+    for severity in severity_order:
+        count = severity_counts.loc[severity_counts["Severity"]==severity, "Count"].values[0]
+        is_selected = (selected_severity == severity)
+        
+        bar_severity_fig.add_trace(go.Bar(
+            x=[severity],
+            y=[count],
+            name=severity,
+            marker=dict(
+                color=colors_map.get(severity, "#6c757d"),
+                line=dict(color="#000000", width=4) if is_selected else dict(color=colors_map.get(severity, "#6c757d"), width=0)
+            ),
+            text=[count],
+            textposition='outside',
+            textfont=dict(size=14, color="#2c3e50", family="Arial"),
+            hovertemplate=f"<b>{severity}</b><br>Open Defects: {count}<extra></extra>"
+        ))
+    
+    bar_severity_fig.update_layout(
+        title="<b>Open Defects Count by Severity</b>",
+        title_font=dict(size=20, family="Arial, sans-serif", color="#2c3e50"),
+        xaxis_title="Severity",
+        yaxis_title="Open Defects",
+        showlegend=False,
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#f8f9fa",
+        margin=dict(t=80, b=60, l=60, r=40),
+        xaxis=dict(tickfont=dict(size=13, color="#2c3e50")),
+        yaxis=dict(tickfont=dict(size=12, color="#2c3e50"), gridcolor="#e9ecef"),
+        bargap=0.3,
+        hoverlabel=dict(bgcolor="white", font_size=14)
+    )
+    
+    # Links container
     header = dhtml.Div([
         dhtml.Span("S.No", style={"fontWeight": "bold", "width": "50px", "display": "inline-block"}),
         dhtml.Span("Defect Link", style={"fontWeight": "bold", "width": "150px", "display": "inline-block"}),
@@ -164,16 +290,10 @@ def display_links_and_highlight(pie_click, bar_state_click, bar_severity_click):
     details_container = dhtml.Div([header], style={"marginTop": "10px"})
 
     filtered = pd.DataFrame()
-    selected_severity = None
-
-    if triggered_id == "pie-chart" and pie_click:
-        state_display = pie_click["points"][0]["label"]
-        filtered = df[df["State"]=="Active"] if state_display=="Reopen" else df[df["State_Display"]==state_display]
-    elif triggered_id == "bar-chart-state" and bar_state_click:
-        state_display = bar_state_click["points"][0]["x"]
-        filtered = df[df["State"]=="Active"] if state_display=="Reopen" else df[df["State_Display"]==state_display]
-    elif triggered_id == "bar-chart-severity" and bar_severity_click:
-        selected_severity = bar_severity_click["points"][0]["x"]
+    
+    if selected_state:
+        filtered = df[df["State"]=="Active"] if selected_state=="Reopen" else df[df["State_Display"]==selected_state]
+    elif selected_severity:
         filtered = df_open[df_open["Severity"]==selected_severity]
 
     if not filtered.empty:
@@ -193,15 +313,18 @@ def display_links_and_highlight(pie_click, bar_state_click, bar_severity_click):
             ]
 
             details_section = dhtml.Details([
-                dhtml.Summary(assigned_to if assigned_to else "Unassigned", style={"fontWeight":"bold","color":"#007ACC",
-                                                  "cursor":"pointer","fontSize":"16px","fontFamily":"Arial"}),
+                dhtml.Summary(assigned_to if assigned_to else "Unassigned", 
+                            style={"fontWeight":"bold","color":"#007ACC",
+                                   "cursor":"pointer","fontSize":"16px","fontFamily":"Arial"}),
                 dhtml.Div(defect_rows, style={"marginLeft":"20px","marginTop":"6px"})
             ], open=False, id={"type":"assigned-details","index":i})
             groups.append(details_section)
 
         details_container = dhtml.Div([header]+groups, style={"marginTop":"10px"})
-
-    return details_container, create_severity_fig(selected_severity)
+    
+    last_updated = f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    
+    return status_table, pie_fig, bar_state_fig, bar_severity_fig, details_container, last_updated
 
 # Run (only for local development)
 if __name__ == "__main__":
