@@ -14,10 +14,10 @@ import glob
 current_dir = os.path.dirname(os.path.abspath(__file__))
 data_folder = os.path.join(current_dir, "data")
 
-# Define your projects (no 'ALL' option)
+# Define your projects - FIXED to match actual file names
 PROJECTS = {
     "Smart FM (DevOps)": "Smart FM Defects through Python.xlsx",
-    "Timesheet (Jira)": "Jira PROJ Defects.xlsx",
+    "Timesheet (Jira)": "Jira techcarrot Time Sheet Defects.xlsx",  # Match the actual filename
 }
 
 def load_data(project_name):
@@ -26,6 +26,10 @@ def load_data(project_name):
     
     if not os.path.exists(excel_file):
         print(f"Warning: Excel file not found at {excel_file}")
+        # List available files in data folder for debugging
+        if os.path.exists(data_folder):
+            available_files = os.listdir(data_folder)
+            print(f"Available files in data folder: {available_files}")
         return pd.DataFrame(columns=["State", "ID", "Issue Links", "Severity", "Assigned To"])
     
     df = pd.read_excel(excel_file)
@@ -62,6 +66,7 @@ def load_data(project_name):
     }
     df["Severity"] = df["Severity"].map(severity_map).fillna("Unknown")
     
+    print(f"Loaded {len(df)} records from {project_name}")
     return df
 
 def refresh_data_from_sources():
