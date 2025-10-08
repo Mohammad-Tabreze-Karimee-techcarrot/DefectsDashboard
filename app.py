@@ -201,15 +201,29 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
         selected_severity = bar_severity_click["points"][0]["x"]
         trigger_scroll = scroll_count + 1
     
-    # Pie chart with enhanced styling - MAKE IT CLICKABLE
+    # Pie chart with enhanced styling - MAKE IT CLICKABLE - SHOW ALL STATES
+    # Get all state counts in the correct order
+    state_display_order = ["New", "Reopen", "Closed", "Resolved"]
+    pie_labels = []
+    pie_values = []
+    pie_colors = []
+    
+    for state in state_display_order:
+        if state in state_counts_df["State_Display"].values:
+            count = state_counts_df.loc[state_counts_df["State_Display"]==state, "Count"].values[0]
+            pie_labels.append(state)
+            pie_values.append(count)
+            pie_colors.append(state_colors.get(state, "#6c757d"))
+    
     pie_fig = go.Figure(data=[go.Pie(
-        labels=df["State_Display"],
-        values=df["State_Display"].value_counts().values,
+        labels=pie_labels,
+        values=pie_values,
         hole=0.4,
-        marker=dict(colors=[state_colors.get(s, "#6c757d") for s in df["State_Display"].value_counts().index]),
+        marker=dict(colors=pie_colors),
         textinfo='percent+label+value',
         textfont=dict(size=14),
-        hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+        hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>',
+        pull=[0.05 if selected_state == label else 0 for label in pie_labels]  # Highlight selected slice
     )])
     
     pie_fig.update_layout(
