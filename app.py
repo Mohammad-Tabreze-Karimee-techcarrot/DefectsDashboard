@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Dash, dcc, html as dhtml, Input, Output, callback_context
+from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State
 from datetime import datetime
 import subprocess
 import threading
@@ -79,6 +79,7 @@ app.layout = dhtml.Div([
         n_intervals=0
     ),
     dcc.Store(id='data-store'),  # Store for data
+    dcc.Store(id='scroll-trigger', data=0),  # Store to trigger scroll
     
     dhtml.Div([
         dhtml.H1("Smart FM Replacement Defects Dashboard", 
@@ -91,17 +92,21 @@ app.layout = dhtml.Div([
     dhtml.Div(id="status-table"),
 
     dhtml.Div([
-        dcc.Graph(id="pie-chart", style={"width": "33%", "height": "400px"}),
-        dcc.Graph(id="bar-chart-state", style={"width": "33%", "height": "400px"}),
-        dcc.Graph(id="bar-chart-severity", style={"width": "33%", "height": "400px"})
+        dcc.Graph(id="pie-chart", style={"width": "33%", "height": "400px"}, config={'displayModeBar': False}),
+        dcc.Graph(id="bar-chart-state", style={"width": "33%", "height": "400px"}, config={'displayModeBar': False}),
+        dcc.Graph(id="bar-chart-severity", style={"width": "33%", "height": "400px"}, config={'displayModeBar': False})
     ], style={"display": "flex", "flexDirection": "row", "justifyContent": "space-between",
               "alignItems": "flex-start", "flexWrap": "nowrap", "marginBottom": "30px",
               "padding": "0 20px"}),
 
     dhtml.H2("🔗 Defects with Details", 
+            id="defects-section",
             style={"marginTop": "30px", "marginLeft": "20px", "color": "#2c3e50",
                    "fontFamily": "Arial, sans-serif", "fontWeight": "bold"}),
-    dhtml.Div(id="links-container", style={"marginTop": "20px", "padding": "0 20px"})
+    dhtml.Div(id="links-container", style={"marginTop": "20px", "padding": "0 20px"}),
+    
+    # Hidden div to trigger scroll
+    dhtml.Div(id='scroll-output', style={'display': 'none'})
 ], style={"backgroundColor": "#f8f9fa", "minHeight": "100vh", "padding": "20px 0"})
 
 # Callback to load data
@@ -120,15 +125,17 @@ def update_data_store(n):
      Output("bar-chart-state", "figure"),
      Output("bar-chart-severity", "figure"),
      Output("links-container", "children"),
-     Output("last-updated", "children")],
+     Output("last-updated", "children"),
+     Output("scroll-trigger", "data")],
     [Input('data-store', 'data'),
      Input("pie-chart", "clickData"),
      Input("bar-chart-state", "clickData"),
-     Input("bar-chart-severity", "clickData")]
+     Input("bar-chart-severity", "clickData")],
+    [State("scroll-trigger", "data")]
 )
-def update_all(json_data, pie_click, bar_state_click, bar_severity_click):
+def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count):
     if not json_data:
-        return None, {}, {}, {}, None, ""
+        return None, {}, {}, {}, None, "", scroll_count
     
     df = pd.read_json(json_data, orient='split')
     
@@ -153,56 +160,70 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click):
     closed_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum()) if "Closed" in state_counts_df["State_Display"].values else 0
     resolved_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum()) if "Resolved" in state_counts_df["State_Display"].values else 0
     
-    # Status Table
+    # Status Table - REDUCED HEIGHT
     status_table = dhtml.Table([
         dhtml.Thead(dhtml.Tr([
-            dhtml.Th("New Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"}), 
-            dhtml.Th("Reopen Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"}),
-            dhtml.Th("Closed Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"}), 
-            dhtml.Th("Resolved Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"}),
-            dhtml.Th("Total Defects", style={"padding": "15px", "fontSize": "16px", "fontWeight": "bold"})
-        ])),
+            dhtml.Th("New Defects", style={"padding": "10px 15px", "fontSize": "14px", "fontWeight": "bold", "color": "#2c3e50"}), 
+            dhtml.Th("Reopen Defects", style={"padding": "10px 15px", "fontSize": "14px", "fontWeight": "bold", "color": "#2c3e50"}),
+            dhtml.Th("Closed Defects", style={"padding": "10px 15px", "fontSize": "14px", "fontWeight": "bold", "color": "#2c3e50"}), 
+            dhtml.Th("Resolved Defects", style={"padding": "10px 15px", "fontSize": "14px", "fontWeight": "bold", "color": "#2c3e50"}),
+            dhtml.Th("Total Defects", style={"padding": "10px 15px", "fontSize": "14px", "fontWeight": "bold", "color": "#2c3e50"})
+        ]), style={"backgroundColor": "#e9ecef"}),
         dhtml.Tbody(dhtml.Tr([
             dhtml.Td(new_count, style={"color": "white", "backgroundColor": "#dc3545", "fontWeight": "bold", 
-                                      "textAlign": "center", "padding": "20px", "fontSize": "24px"}),
+                                      "textAlign": "center", "padding": "12px", "fontSize": "20px"}),
             dhtml.Td(reopen_count, style={"color": "white", "backgroundColor": "#7d1e2b", "fontWeight": "bold", 
-                                         "textAlign": "center", "padding": "20px", "fontSize": "24px"}),
+                                         "textAlign": "center", "padding": "12px", "fontSize": "20px"}),
             dhtml.Td(closed_count, style={"color": "white", "backgroundColor": "#28a745", "fontWeight": "bold", 
-                                         "textAlign": "center", "padding": "20px", "fontSize": "24px"}),
+                                         "textAlign": "center", "padding": "12px", "fontSize": "20px"}),
             dhtml.Td(resolved_count, style={"color": "white", "backgroundColor": "#fd7e14", "fontWeight": "bold", 
-                                           "textAlign": "center", "padding": "20px", "fontSize": "24px"}),
+                                           "textAlign": "center", "padding": "12px", "fontSize": "20px"}),
             dhtml.Td(total_defects, style={"color": "white", "backgroundColor": "#6c757d", "fontWeight": "bold", 
-                                          "textAlign": "center", "padding": "20px", "fontSize": "24px"})
+                                          "textAlign": "center", "padding": "12px", "fontSize": "20px"})
         ]))
     ], style={"width": "90%", "margin": "auto", "marginBottom": "40px", "borderCollapse": "collapse",
               "boxShadow": "0 4px 6px rgba(0,0,0,0.1)", "borderRadius": "8px", "overflow": "hidden"})
-    
-    # Pie chart with enhanced styling
-    pie_fig = px.pie(df, names="State_Display", title="<b>Defects by State</b>", hole=0.4,
-                     color="State_Display", color_discrete_map=state_colors)
-    pie_fig.update_traces(textinfo="percent+label+value", textfont_size=14)
-    pie_fig.update_layout(
-        title_font=dict(size=20, family="Arial, sans-serif", color="#2c3e50"),
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
-        margin=dict(t=80, b=40, l=40, r=40),
-        hoverlabel=dict(bgcolor="white", font_size=14)
-    )
     
     # Determine which state/severity is selected
     ctx = callback_context
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else None
     selected_state = None
     selected_severity = None
+    trigger_scroll = scroll_count
     
     if triggered_id == "pie-chart" and pie_click:
         selected_state = pie_click["points"][0]["label"]
+        trigger_scroll = scroll_count + 1
     elif triggered_id == "bar-chart-state" and bar_state_click:
         selected_state = bar_state_click["points"][0]["x"]
+        trigger_scroll = scroll_count + 1
     elif triggered_id == "bar-chart-severity" and bar_severity_click:
         selected_severity = bar_severity_click["points"][0]["x"]
+        trigger_scroll = scroll_count + 1
     
-    # Bar chart by state with selection indicator
+    # Pie chart with enhanced styling - MAKE IT CLICKABLE
+    pie_fig = go.Figure(data=[go.Pie(
+        labels=df["State_Display"],
+        values=df["State_Display"].value_counts().values,
+        hole=0.4,
+        marker=dict(colors=[state_colors.get(s, "#6c757d") for s in df["State_Display"].value_counts().index]),
+        textinfo='percent+label+value',
+        textfont=dict(size=14),
+        hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+    )])
+    
+    pie_fig.update_layout(
+        title="<b>Defects by State</b>",
+        title_font=dict(size=20, family="Arial, sans-serif", color="#2c3e50"),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        margin=dict(t=80, b=40, l=40, r=40),
+        hoverlabel=dict(bgcolor="white", font_size=14),
+        showlegend=True,
+        legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.05)
+    )
+    
+    # Bar chart by state with selection indicator - INCREASED TOP MARGIN
     bar_state_fig = go.Figure()
     for state in state_counts_df["State_Display"]:
         count = state_counts_df.loc[state_counts_df["State_Display"]==state, "Count"].values[0]
@@ -222,6 +243,10 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click):
             hovertemplate=f"<b>{state}</b><br>Defects: {count}<extra></extra>"
         ))
     
+    # Calculate dynamic y-axis range
+    max_count = state_counts_df["Count"].max()
+    y_range = [0, max_count * 1.15]  # Add 15% padding at top
+    
     bar_state_fig.update_layout(
         title="<b>Defects Count by State</b>",
         title_font=dict(size=20, family="Arial, sans-serif", color="#2c3e50"),
@@ -232,12 +257,16 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click):
         plot_bgcolor="#f8f9fa",
         margin=dict(t=80, b=60, l=60, r=40),
         xaxis=dict(tickfont=dict(size=13, color="#2c3e50")),
-        yaxis=dict(tickfont=dict(size=12, color="#2c3e50"), gridcolor="#e9ecef"),
+        yaxis=dict(
+            tickfont=dict(size=12, color="#2c3e50"), 
+            gridcolor="#e9ecef",
+            range=y_range
+        ),
         bargap=0.3,
         hoverlabel=dict(bgcolor="white", font_size=14)
     )
     
-    # Bar chart by severity with selection indicator
+    # Bar chart by severity with selection indicator - INCREASED TOP MARGIN
     colors_map = {
         "Critical": "#8B0000",
         "High": "#dc3545",
@@ -265,6 +294,10 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click):
             hovertemplate=f"<b>{severity}</b><br>Open Defects: {count}<extra></extra>"
         ))
     
+    # Calculate dynamic y-axis range
+    max_sev_count = severity_counts["Count"].max()
+    y_sev_range = [0, max_sev_count * 1.15]  # Add 15% padding at top
+    
     bar_severity_fig.update_layout(
         title="<b>Open Defects Count by Severity</b>",
         title_font=dict(size=20, family="Arial, sans-serif", color="#2c3e50"),
@@ -275,7 +308,11 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click):
         plot_bgcolor="#f8f9fa",
         margin=dict(t=80, b=60, l=60, r=40),
         xaxis=dict(tickfont=dict(size=13, color="#2c3e50")),
-        yaxis=dict(tickfont=dict(size=12, color="#2c3e50"), gridcolor="#e9ecef"),
+        yaxis=dict(
+            tickfont=dict(size=12, color="#2c3e50"), 
+            gridcolor="#e9ecef",
+            range=y_sev_range
+        ),
         bargap=0.3,
         hoverlabel=dict(bgcolor="white", font_size=14)
     )
@@ -324,7 +361,24 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click):
     
     last_updated = f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     
-    return status_table, pie_fig, bar_state_fig, bar_severity_fig, details_container, last_updated
+    return status_table, pie_fig, bar_state_fig, bar_severity_fig, details_container, last_updated, trigger_scroll
+
+# Clientside callback for smooth scroll
+app.clientside_callback(
+    """
+    function(scroll_trigger) {
+        if (scroll_trigger > 0) {
+            const element = document.getElementById('defects-section');
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+        return '';
+    }
+    """,
+    Output('scroll-output', 'children'),
+    Input('scroll-trigger', 'data')
+)
 
 # Run (only for local development)
 if __name__ == "__main__":
