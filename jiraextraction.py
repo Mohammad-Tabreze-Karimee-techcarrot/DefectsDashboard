@@ -10,11 +10,14 @@ jira_url = os.getenv("JIRA_URL", "https://your-domain.atlassian.net")
 jira_email = os.getenv("JIRA_EMAIL")
 jira_api_token = os.getenv("JIRA_API_TOKEN")
 jira_project_key = os.getenv("JIRA_PROJECT_KEY", "PROJ")
+jira_label_filter = os.getenv("JIRA_LABEL_FILTER", "")  # NEW: Label filter for build versions
 
-# State mapping from Jira to Azure DevOps
+# State mapping from Jira to Azure DevOps - UPDATED
 STATE_MAPPING = {
     "Open": "New",
+    "New": "New",
     "To Do": "Reopen",
+    "Reopen": "Reopen",
     "In Progress": "New",
     "In Development": "New",
     "Done": "Closed",
@@ -25,18 +28,24 @@ STATE_MAPPING = {
 print("🔄 Starting Jira defects extraction...")
 start_time = time.time()
 
-# JQL query - using GET method with query parameters instead of POST
-# FIXED: Wrap project key in quotes if it contains spaces
-if ' ' in jira_project_key:
-    jql_query = f'project = "{jira_project_key}" AND type = Bug ORDER BY created DESC'
+# JQL query - UPDATED to include label filter if provided
+if jira_label_filter:
+    if ' ' in jira_project_key:
+        jql_query = f'project = "{jira_project_key}" AND type = Bug AND labels = "{jira_label_filter}" ORDER BY created DESC'
+    else:
+        jql_query = f'project = {jira_project_key} AND type = Bug AND labels = "{jira_label_filter}" ORDER BY created DESC'
+    print(f"🏷️  Using label filter: {jira_label_filter}")
 else:
-    jql_query = f'project = {jira_project_key} AND type = Bug ORDER BY created DESC'
+    if ' ' in jira_project_key:
+        jql_query = f'project = "{jira_project_key}" AND type = Bug ORDER BY created DESC'
+    else:
+        jql_query = f'project = {jira_project_key} AND type = Bug ORDER BY created DESC'
 
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
 # Jira API v2 endpoint (more compatible)
-search_url = f"{jira_url}/rest/api/3/search/jql"
+search_url = f"{jira_url}/rest/api/2/search"
 
 # Prepare authentication
 auth = HTTPBasicAuth(jira_email, jira_api_token)
@@ -53,11 +62,8 @@ while True:
         'jql': jql_query,
         'startAt': start_at,
         'maxResults': max_results,
-        'fields': 'status,assignee,priority,created,updated'  # Removed issuetype, labels, changed summary to work
+        'fields': 'summary,status,assignee,priority,created,updated'
     }
-    
-    # Add 'work' field if available (custom field for description/work)
-    # Note: 'work' might be a custom field, we'll try to get it
     
     try:
         response = requests.get(search_url, params=params, auth=auth, timeout=30)
@@ -88,6 +94,19 @@ while True:
 
 if not all_issues:
     print("⚠️ No issues found.")
+    # Create empty Excel file to avoid errors
+    wb = openpyxl.Workbook()
+    sheet = wb.active
+    sheet.title = "Jira Defects"
+    sheet.append(["ID", "Work Item Type", "Title", "State", "Original Jira State", "Assigned To", "Tags", "Severity", "Issue Links"])
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_folder = os.path.join(current_dir, "data")
+    os.makedirs(data_folder, exist_ok=True)
+    
+    save_path = os.path.join(data_folder, f"Jira {jira_project_key} Defects.xlsx")
+    wb.save(save_path)
+    print(f"✅ Empty Excel file created at: {save_path}")
     exit()
 
 print(f"✅ Found {len(all_issues)} issues. Processing...")
@@ -106,8 +125,8 @@ for idx, issue in enumerate(all_issues, start=2):
     # Extract fields
     issue_type = "Bug"  # Default to Bug since issuetype is not available
     
-    # Title - Try multiple fields: work, summary, or use issue key
-    title = fields.get('work', '') or fields.get('summary', '') or issue_key
+    # Title - Try summary field
+    title = fields.get('summary', '') or fields.get('work', '') or issue_key
     
     # Status - Get original and map to Azure DevOps state
     status_field = fields.get('status', {})

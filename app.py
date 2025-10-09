@@ -18,6 +18,7 @@ data_folder = os.path.join(current_dir, "data")
 PROJECTS = {
     "Smart FM (DevOps)": "Smart FM Defects through Python.xlsx",
     "Timesheet (Jira)": "Jira techcarrot Time Sheet Defects.xlsx",
+    "Emirates Transport (Jira)": "Jira Emirates Transport Defects.xlsx",
 }
 
 def load_data(project_name):
@@ -124,7 +125,6 @@ app.layout = dhtml.Div([
     dcc.Store(id='data-store'),
     dcc.Store(id='scroll-trigger', data=0),
     dcc.Store(id='collapsed-state', data={}),
-    
     dhtml.Div([
         dhtml.H1("Multi-Project Defects Dashboard", 
                 style={"textAlign": "center", "color": "#2c3e50", "marginBottom": "10px",
@@ -249,20 +249,38 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     ])
     
     # Pie Chart with NEW colors
-    pie_colors = [severity_colors.get(sev, "#6c757d") for sev in severity_counts["Severity"]]
-    fig_pie = go.Figure(data=[go.Pie(
-        labels=severity_counts["Severity"],
-        values=severity_counts["Count"],
-        marker=dict(colors=pie_colors),
-        textposition='inside',
-        textinfo='percent+label+value',
-        hovertemplate='%{label}: %{value}<extra></extra>'
-    )])
-    fig_pie.update_layout(
-        title="Open Defects by Severity",
-        margin=dict(l=20, r=20, t=40, b=20),
-        showlegend=True
-    )
+    if severity_counts["Count"].sum() == 0:
+        # Empty state for pie chart
+        fig_pie = go.Figure()
+        fig_pie.add_annotation(
+            text="🎉<br>No Open Defects!",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=20, color="#28a745", family="Arial"),
+            align="center"
+        )
+        fig_pie.update_layout(
+            title="Open Defects by Severity",
+            margin=dict(l=20, r=20, t=40, b=20),
+            showlegend=False,
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False)
+        )
+    else:
+        pie_colors = [severity_colors.get(sev, "#6c757d") for sev in severity_counts["Severity"]]
+        fig_pie = go.Figure(data=[go.Pie(
+            labels=severity_counts["Severity"],
+            values=severity_counts["Count"],
+            marker=dict(colors=pie_colors),
+            textposition='inside',
+            textinfo='percent+label+value',
+            hovertemplate='%{label}: %{value}<extra></extra>'
+        )])
+        fig_pie.update_layout(
+            title="Open Defects by Severity",
+            margin=dict(l=20, r=20, t=40, b=20),
+            showlegend=True
+        )
     
     # Bar Chart (State Distribution)
     fig_bar_state = px.bar(state_counts_df, x="State_Display", y="Count", title="Defects by State",
@@ -272,20 +290,40 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                                margin=dict(l=20, r=20, t=40, b=20))
     
     # Bar Chart (Severity Distribution) with NEW colors
-    bar_colors = [severity_colors.get(sev, "#6c757d") for sev in severity_counts["Severity"]]
-    fig_bar_severity = go.Figure(data=[go.Bar(
-        x=severity_counts["Severity"],
-        y=severity_counts["Count"],
-        marker=dict(color=bar_colors),
-        hovertemplate='%{x}: %{y}<extra></extra>'
-    )])
-    fig_bar_severity.update_layout(
-        title="Open Defects by Severity",
-        xaxis_title="",
-        yaxis_title="Count",
-        showlegend=False,
-        margin=dict(l=20, r=20, t=40, b=20)
-    )
+    if severity_counts["Count"].sum() == 0:
+        # Empty state for severity bar chart
+        fig_bar_severity = go.Figure()
+        fig_bar_severity.add_annotation(
+            text="🎉<br>Congratulations!<br>No Open Defects Found",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=18, color="#28a745", family="Arial"),
+            align="center"
+        )
+        fig_bar_severity.update_layout(
+            title="Open Defects by Severity",
+            xaxis_title="",
+            yaxis_title="Count",
+            showlegend=False,
+            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False)
+        )
+    else:
+        bar_colors = [severity_colors.get(sev, "#6c757d") for sev in severity_counts["Severity"]]
+        fig_bar_severity = go.Figure(data=[go.Bar(
+            x=severity_counts["Severity"],
+            y=severity_counts["Count"],
+            marker=dict(color=bar_colors),
+            hovertemplate='%{x}: %{y}<extra></extra>'
+        )])
+        fig_bar_severity.update_layout(
+            title="Open Defects by Severity",
+            xaxis_title="",
+            yaxis_title="Count",
+            showlegend=False,
+            margin=dict(l=20, r=20, t=40, b=20)
+        )
     
     # Determine filter based on clicks
     filtered_df = df_open.copy()
@@ -374,28 +412,49 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                     "Suggestion": {"backgroundColor": "#17a2b8", "color": "white"}
                 }.get(row.get("Severity", ""), {"backgroundColor": "#6c757d", "color": "white"})
                 
+                # Get title/summary - FIXED to use the correct column name
+                defect_title = str(row.get("Title", ""))
+                if not defect_title or defect_title == "N/A" or defect_title == "nan":
+                    defect_title = "No summary available"
+                
                 defect_item = dhtml.Div([
-                    dhtml.Span(f"{row.get('ID', 'N/A')}", 
-                              style={"fontWeight": "bold", "marginRight": "10px", "color": "#2c3e50", "minWidth": "100px"}),
-                    dhtml.Span(row.get("State_Display", "N/A"), style={
-                        "padding": "3px 8px", "borderRadius": "4px", "marginRight": "10px",
-                        "fontSize": "12px", "fontWeight": "bold", **state_style
+                    # First row: ID, State, Severity, Link
+                    dhtml.Div([
+                        dhtml.Span(f"{row.get('ID', 'N/A')}", 
+                                  style={"fontWeight": "bold", "marginRight": "15px", "color": "#2c3e50", "fontSize": "14px"}),
+                        dhtml.Span(row.get("State_Display", "N/A"), style={
+                            "padding": "4px 10px", "borderRadius": "4px", "marginRight": "10px",
+                            "fontSize": "12px", "fontWeight": "bold", **state_style
+                        }),
+                        dhtml.Span(row.get("Severity", "N/A"), style={
+                            "padding": "4px 10px", "borderRadius": "4px", "marginRight": "15px",
+                            "fontSize": "12px", "fontWeight": "bold", **severity_style
+                        }),
+                        dhtml.A("🔗 View", href=row.get("Issue Links", "#"), target="_blank",
+                               style={"color": "#007bff", "textDecoration": "none", "fontWeight": "bold", 
+                                     "marginLeft": "auto", "fontSize": "13px"})
+                    ], style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "flexWrap": "wrap",
+                        "marginBottom": "10px"
                     }),
-                    dhtml.Span(row.get("Severity", "N/A"), style={
-                        "padding": "3px 8px", "borderRadius": "4px", "marginRight": "10px",
-                        "fontSize": "12px", "fontWeight": "bold", **severity_style
-                    }),
-                    dhtml.A("🔗 View", href=row.get("Issue Links", "#"), target="_blank",
-                           style={"color": "#007bff", "textDecoration": "none", "fontWeight": "bold", "marginLeft": "auto"})
+                    # Second row: Summary
+                    dhtml.Div([
+                        dhtml.Span("Summary: ", style={"fontWeight": "bold", "color": "#495057", "fontSize": "13px"}),
+                        dhtml.Span(defect_title, style={"color": "#6c757d", "fontSize": "13px", "lineHeight": "1.6"})
+                    ], style={
+                        "paddingLeft": "0px",
+                        "borderTop": "1px solid #e9ecef",
+                        "paddingTop": "8px"
+                    })
                 ], style={
-                    "padding": "12px 15px",
-                    "marginBottom": "8px",
-                    "backgroundColor": "#f8f9fa",
-                    "borderRadius": "5px",
-                    "display": "flex",
-                    "alignItems": "center",
-                    "flexWrap": "wrap",
-                    "border": "1px solid #e9ecef"
+                    "padding": "14px 16px",
+                    "marginBottom": "12px",
+                    "backgroundColor": "#ffffff",
+                    "borderRadius": "6px",
+                    "border": "1px solid #dee2e6",
+                    "boxShadow": "0 1px 3px rgba(0,0,0,0.05)"
                 })
                 
                 defect_items.append(defect_item)
