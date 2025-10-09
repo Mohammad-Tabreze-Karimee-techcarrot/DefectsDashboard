@@ -3,13 +3,12 @@ import pandas as pd
 from io import StringIO
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State, ALL
+from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State
 from datetime import datetime
 import subprocess
 import threading
 import time
 import glob
-import json
 
 # Paths and data
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -127,7 +126,7 @@ app.layout = dhtml.Div([
     dcc.Store(id='collapsed-state', data={}),
     
     dhtml.Div([
-        dhtml.H1("Projects Defects Dashboard", 
+        dhtml.H1("Multi-Project Defects Dashboard", 
                 style={"textAlign": "center", "color": "#2c3e50", "marginBottom": "10px",
                        "fontFamily": "Arial, sans-serif", "fontWeight": "bold"}),
         dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#7f8c8d", 
@@ -350,9 +349,12 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
         assignee_groups = filtered_df.groupby("Assigned To")
         assignee_sections = []
         
-        for assignee, group_df in assignee_groups:
+        for idx, (assignee, group_df) in enumerate(assignee_groups):
             assignee_display = assignee if assignee and assignee != "N/A" else "Unassigned"
             defect_count = len(group_df)
+            
+            # Create unique ID for this assignee
+            assignee_id = f"assignee-section-{idx}"
             
             # Create defect items for this assignee
             defect_items = []
@@ -398,20 +400,18 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                 
                 defect_items.append(defect_item)
             
-            # Create unique ID for this assignee using index
-            assignee_id = f"assignee-{assignee_display.replace(' ', '-').replace('@', '-at-')}"
-            
-            # Assignee header (collapsible)
+            # Assignee header (collapsible) with onclick
             assignee_section = dhtml.Div([
-                dhtml.Button([
-                    dhtml.Span("▶ ", 
-                              style={"marginRight": "10px", "fontSize": "14px"}),
+                dhtml.Div([
+                    dhtml.Span("▶", 
+                              id=f"arrow-{assignee_id}",
+                              style={"marginRight": "10px", "fontSize": "14px", "display": "inline-block", "width": "15px"}),
                     dhtml.Span(f"{assignee_display}", 
                               style={"fontWeight": "bold", "fontSize": "18px", "color": "#2c3e50"}),
                     dhtml.Span(f" ({defect_count} defect{'s' if defect_count != 1 else ''})", 
                               style={"marginLeft": "10px", "fontSize": "14px", "color": "#6c757d"})
                 ], 
-                id={'type': 'assignee-toggle', 'index': assignee_id},
+                id=f"toggle-{assignee_id}",
                 n_clicks=0,
                 style={
                     "width": "100%",
@@ -429,7 +429,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                 
                 dhtml.Div(
                     defect_items,
-                    id={'type': 'assignee-content', 'index': assignee_id},
+                    id=f"content-{assignee_id}",
                     style={
                         "display": "none",
                         "padding": "10px 0",
@@ -449,60 +449,52 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
 # Clientside callback for toggling assignee sections
 app.clientside_callback(
     """
-    function(n_clicks_list) {
-        // This gets triggered when ANY toggle button is clicked
-        // We need to find which one was clicked and toggle only that section
-        
-        const triggered = dash_clientside.callback_context.triggered;
-        if (!triggered || triggered.length === 0) {
-            return dash_clientside.no_update;
+    function(links_content) {
+        // Only run if content exists
+        if (!links_content) {
+            return window.dash_clientside.no_update;
         }
         
-        // Get the triggered button's ID
-        const triggeredProp = triggered[0].prop_id;
-        if (!triggeredProp || triggeredProp === '.') {
-            return dash_clientside.no_update;
-        }
-        
-        // Extract the index from the triggered button
-        const match = triggeredProp.match(/"index":"([^"]+)"/);
-        if (!match) {
-            return dash_clientside.no_update;
-        }
-        
-        const triggeredIndex = match[1];
-        
-        // Get all content divs
-        const contentDivs = document.querySelectorAll('[id*="assignee-content"]');
-        
-        // Toggle only the matching content div
-        contentDivs.forEach(div => {
-            const divId = div.id;
-            if (divId.includes(triggeredIndex)) {
-                const currentDisplay = div.style.display;
-                div.style.display = (currentDisplay === 'none' || currentDisplay === '') ? 'block' : 'none';
+        // Small delay to ensure DOM is fully rendered
+        setTimeout(function() {
+            const toggles = document.querySelectorAll('[id^="toggle-assignee-section-"]');
+            
+            toggles.forEach(toggle => {
+                // Remove existing listener if any
+                toggle.onclick = null;
                 
-                // Also update the arrow in the button
-                const buttonId = divId.replace('assignee-content', 'assignee-toggle');
-                const button = document.getElementById(buttonId);
-                if (button) {
-                    const arrow = button.querySelector('span:first-child');
-                    if (arrow) {
-                        arrow.textContent = (div.style.display === 'block') ? '▼ ' : '▶ ';
+                // Add new click listener
+                toggle.onclick = function() {
+                    const toggleId = this.id;
+                    const sectionId = toggleId.replace('toggle-', '');
+                    const contentId = 'content-' + sectionId;
+                    const arrowId = 'arrow-' + sectionId;
+                    
+                    const content = document.getElementById(contentId);
+                    const arrow = document.getElementById(arrowId);
+                    
+                    if (content && arrow) {
+                        if (content.style.display === 'none' || content.style.display === '') {
+                            content.style.display = 'block';
+                            arrow.textContent = '▼';
+                        } else {
+                            content.style.display = 'none';
+                            arrow.textContent = '▶';
+                        }
                     }
-                }
-            }
-        });
+                };
+            });
+        }, 100);
         
-        return dash_clientside.no_update;
+        return window.dash_clientside.no_update;
     }
     """,
-    Output({'type': 'assignee-toggle', 'index': ALL}, 'style'),
-    Input({'type': 'assignee-toggle', 'index': ALL}, 'n_clicks'),
+    Output('scroll-output', 'children'),
+    Input('links-container', 'children'),
     prevent_initial_call=True
 )
 
-# Clientside callback for scroll
+# Scroll callback
 app.clientside_callback(
     """
     function(scroll_trigger) {
@@ -515,7 +507,7 @@ app.clientside_callback(
         return '';
     }
     """,
-    Output('scroll-output', 'children'),
+    Output('scroll-output', 'style'),
     Input('scroll-trigger', 'data')
 )
 
