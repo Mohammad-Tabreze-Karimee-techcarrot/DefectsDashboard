@@ -44,27 +44,30 @@ else:
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
-# Use standard Jira API v3 search endpoint with GET method
-search_url = f"{jira_url}/rest/api/3/search"
+# Use NEW Jira API v3 search/jql endpoint (required as of 2025)
+search_url = f"{jira_url}/rest/api/3/search/jql"
 
 auth = HTTPBasicAuth(jira_email, jira_api_token)
 
-# Pagination parameters
-start_at = 0
-max_results = 100
+# Pagination parameters - NEW API uses cursor-based pagination
+next_page_token = None
 all_issues = []
+max_results = 100
 
-# Fetch all issues with GET method and query parameters
+# Fetch all issues with GET method and new pagination
 while True:
     params = {
         "jql": jql_query,
-        "startAt": start_at,
         "maxResults": max_results,
         "fields": "*all"
     }
     
+    # Add pagination token if it exists
+    if next_page_token:
+        params["nextPageToken"] = next_page_token
+    
     try:
-        # GET request with query parameters (proper Jira v3 API usage)
+        # GET request with query parameters (NEW Jira v3 API /search/jql)
         response = requests.get(
             search_url, 
             params=params,
@@ -80,16 +83,18 @@ while True:
         issues = data.get('issues', [])
         all_issues.extend(issues)
         
-        total = data.get('total', 0)
+        total = data.get('total', len(all_issues))
         print(f"   Fetched {len(all_issues)}/{total} issues...")
         
-        if len(all_issues) >= total:
+        # NEW API pagination - check for next page
+        next_page_token = data.get('nextPageToken')
+        is_last = data.get('isLast', True)
+        
+        if is_last or not next_page_token:
             break
         
-        start_at += max_results
-        
     except requests.exceptions.Timeout:
-        print(f"⚠️ Timeout occurred at startAt={start_at}")
+        print(f"⚠️ Timeout occurred")
         break
     except Exception as e:
         print(f"⚠️ Error: {str(e)}")
