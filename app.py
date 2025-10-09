@@ -4,7 +4,7 @@ from io import StringIO
 import plotly.express as px
 import plotly.graph_objects as go
 from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State, clientside_callback
-import dash
+import dash # <-- Required for dash.dependencies.ALL
 from datetime import datetime
 import subprocess
 import threading
@@ -15,7 +15,7 @@ import glob
 current_dir = os.path.dirname(os.path.abspath(__file__))
 data_folder = os.path.join(current_dir, "data")
 
-# Define your projects - FIXED to match actual file names
+# Define your projects
 PROJECTS = {
     "Smart FM (DevOps)": "Smart FM Defects through Python.xlsx",
     "Timesheet (Jira)": "Jira techcarrot Time Sheet Defects.xlsx",
@@ -97,19 +97,15 @@ def schedule_data_refresh():
 refresh_thread = threading.Thread(target=schedule_data_refresh, daemon=True)
 refresh_thread.start()
 
-# Define colors - UPDATED COLOR SCHEME for professional look
-# Using a deep primary blue for New/Reopen, a soft green for Closed, and amber for Resolved
+# Define colors
 state_colors = {"New": "#E53935", "Reopen": "#C62828", "Closed": "#4CAF50", "Resolved": "#FF9800"}
-
-# Severity colors - keeping the high contrast for critical issues
 severity_colors = {
-    "Critical": "#E53935",  # Deep Red
-    "High": "#FF7043",      # Lighter Orange/Red
-    "Medium": "#FFB300",    # Amber
-    "Low": "#42A5F5",       # Light Blue
-    "Suggestion": "#81C784" # Soft Green
+    "Critical": "#E53935",
+    "High": "#FF7043",
+    "Medium": "#FFB300",
+    "Low": "#42A5F5",
+    "Suggestion": "#81C784"
 }
-
 severity_order = ["Critical", "High", "Medium", "Low", "Suggestion"]
 
 # App
@@ -126,7 +122,7 @@ app.layout = dhtml.Div([
     ),
     dcc.Store(id='data-store'),
     dcc.Store(id='scroll-trigger', data=0),
-    dcc.Store(id='collapse-trigger', data=0), # NEW: Trigger for collapse on chart click
+    dcc.Store(id='collapse-trigger', data=0),
     dhtml.Div([
         dhtml.H1("Projects Defects Dashboard", 
                 style={"textAlign": "center", "color": "#1C2833", "marginBottom": "10px",
@@ -135,20 +131,27 @@ app.layout = dhtml.Div([
                                             "fontSize": "13px", "marginBottom": "20px"})
     ]),
     
+    # Project Selector - FIXED ALIGNMENT
     dhtml.Div([
-        dhtml.Label("Select Project:", style={"fontWeight": "bold", "marginRight": "10px", 
+        dhtml.Div("Select Project:", style={"fontWeight": "bold", "marginRight": "10px", 
                                                "fontSize": "15px", "color": "#1C2833"}),
         dcc.Dropdown(
             id='project-selector',
             options=[{'label': name, 'value': name} for name in PROJECTS.keys()],
             value=list(PROJECTS.keys())[0],
-            style={"width": "350px", "display": "inline-block", "boxShadow": "0 1px 3px rgba(0,0,0,0.1)"}
+            style={"width": "350px", "boxShadow": "0 1px 3px rgba(0,0,0,0.1)"}
         )
-    ], style={"textAlign": "center", "marginBottom": "30px"}),
+    ], style={
+        "textAlign": "center", 
+        "marginBottom": "30px",
+        "display": "flex", 
+        "justifyContent": "center",
+        "alignItems": "center" # Vertical alignment fix
+    }),
 
     dhtml.Div(id="status-table"),
 
-    # Charts section: Reduced width for a smaller view
+    # Charts section: Small size maintained
     dhtml.Div([
         dcc.Graph(id="pie-chart", style={"width": "32%", "height": "350px", "margin": "0.5%"}, config={'displayModeBar': False}),
         dcc.Graph(id="bar-chart-state", style={"width": "32%", "height": "350px", "margin": "0.5%"}, config={'displayModeBar': False}),
@@ -165,7 +168,6 @@ app.layout = dhtml.Div([
     
     # Hidden components for callbacks
     dhtml.Div(id='scroll-output', style={'display': 'none'}),
-    dcc.Store(id='initial-load-flag', data=True) # Used to skip initial collapse
 ], style={"backgroundColor": "#f4f6f9", "minHeight": "100vh", "padding": "20px 0"})
 
 @app.callback(
@@ -185,24 +187,22 @@ def update_data_store(n, selected_project):
      Output("links-container", "children"),
      Output("last-updated", "children"),
      Output("scroll-trigger", "data"),
-     Output("collapse-trigger", "data"), # NEW output
-     Output("initial-load-flag", "data")], # Used to track initial load
+     Output("collapse-trigger", "data")],
     [Input('data-store', 'data'),
      Input("pie-chart", "clickData"),
      Input("bar-chart-state", "clickData"),
      Input("bar-chart-severity", "clickData")],
     [State("scroll-trigger", "data"),
-     State("collapse-trigger", "data"),
-     State("initial-load-flag", "data")]
+     State("collapse-trigger", "data")]
 )
-def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count, collapse_count, is_initial_load):
+def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count, collapse_count):
     if not json_data:
-        return None, {}, {}, {}, None, "", scroll_count, collapse_count, is_initial_load
+        return None, {}, {}, {}, None, "", scroll_count, collapse_count
     
     df = pd.read_json(StringIO(json_data), orient='split')
     
     if df.empty:
-        return None, {}, {}, {}, None, "", scroll_count, collapse_count, is_initial_load
+        return None, {}, {}, {}, None, "", scroll_count, collapse_count
     
     # Filter for open defects
     df_open = df[~df["State_Display"].str.lower().isin(["closed", "resolved"])]
@@ -221,50 +221,56 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     closed_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum()) if "Closed" in state_counts_df["State_Display"].values else 0
     resolved_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum()) if "Resolved" in state_counts_df["State_Display"].values else 0
     
-    # Status Table - Reduced size
+    # Status Table - HEIGHT REDUCTION (smaller padding/font)
     status_table = dhtml.Div([
         dhtml.Div([
+            # Total Defects Card (Smaller font/padding)
             dhtml.Div([
-                dhtml.Div(str(total_defects), style={"fontSize": "30px", "fontWeight": "bold", "color": "#1C2833"}),
-                dhtml.Div("Total Defects", style={"fontSize": "12px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#EBF0F7", # Light Blue-Gray background
-                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                dhtml.Div(str(total_defects), style={"fontSize": "24px", "fontWeight": "bold", "color": "#1C2833"}),
+                dhtml.Div("Total Defects", style={"fontSize": "11px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#EBF0F7", # Reduced padding
+                     "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
+            # New Defects Card
             dhtml.Div([
-                dhtml.Div(str(new_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['New']}),
-                dhtml.Div("New", style={"fontSize": "12px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#FFEBEB", # Soft Red background
-                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                dhtml.Div(str(new_count), style={"fontSize": "24px", "fontWeight": "bold", "color": state_colors['New']}),
+                dhtml.Div("New", style={"fontSize": "11px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FFEBEB", # Reduced padding
+                     "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
+            # Reopen Defects Card
             dhtml.Div([
-                dhtml.Div(str(reopen_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['Reopen']}),
-                dhtml.Div("Reopen", style={"fontSize": "12px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#FEE4E4", # Very soft Red background
-                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                dhtml.Div(str(reopen_count), style={"fontSize": "24px", "fontWeight": "bold", "color": state_colors['Reopen']}),
+                dhtml.Div("Reopen", style={"fontSize": "11px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FEE4E4", # Reduced padding
+                     "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
+            # Closed Defects Card
             dhtml.Div([
-                dhtml.Div(str(closed_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['Closed']}),
-                dhtml.Div("Closed", style={"fontSize": "12px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#E8F5E9", # Soft Green background
-                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                dhtml.Div(str(closed_count), style={"fontSize": "24px", "fontWeight": "bold", "color": state_colors['Closed']}),
+                dhtml.Div("Closed", style={"fontSize": "11px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#E8F5E9", # Reduced padding
+                     "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
+            # Resolved Defects Card
             dhtml.Div([
-                dhtml.Div(str(resolved_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['Resolved']}),
-                dhtml.Div("Resolved", style={"fontSize": "12px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#FFF8E1", # Soft Amber background
-                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                dhtml.Div(str(resolved_count), style={"fontSize": "24px", "fontWeight": "bold", "color": state_colors['Resolved']}),
+                dhtml.Div("Resolved", style={"fontSize": "11px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FFF8E1", # Reduced padding
+                     "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
         ], style={"display": "flex", "flexDirection": "row", "justifyContent": "center", 
                  "flexWrap": "wrap", "padding": "0 20px"})
     ])
     
+    # Chart generation logic remains the same (already small)
+    
     # Pie Chart
     if severity_counts["Count"].sum() == 0:
-        # Empty state for pie chart
         fig_pie = go.Figure()
         fig_pie.add_annotation(
             text="🎉<br>No Open Defects!",
@@ -309,7 +315,6 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     
     # Bar Chart (Severity Distribution)
     if severity_counts["Count"].sum() == 0:
-        # Empty state for severity bar chart
         fig_bar_severity = go.Figure()
         fig_bar_severity.add_annotation(
             text="🎉<br>Congratulations!<br>No Open Defects Found",
@@ -345,9 +350,8 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             margin=dict(l=10, r=10, t=40, b=10)
         )
     
-    # Determine filter based on clicks
+    # Determine filter based on clicks (logic remains the same)
     filtered_df = df_open.copy()
-    filter_applied = False
     new_scroll_count = scroll_count
     new_collapse_count = collapse_count
     
@@ -355,10 +359,9 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     if ctx.triggered:
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
-        # Increment scroll and collapse triggers on ANY chart click
         if trigger_id in ['pie-chart', 'bar-chart-state', 'bar-chart-severity'] and ctx.triggered[0]['value']:
             new_scroll_count += 1
-            new_collapse_count += 1 # Trigger a collapse action
+            new_collapse_count += 1
             
             if trigger_id == 'pie-chart':
                 severity_clicked = pie_click['points'][0]['label']
@@ -366,42 +369,35 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             
             elif trigger_id == 'bar-chart-state':
                 state_clicked = bar_state_click['points'][0]['x']
-                filtered_df = df[df["State_Display"] == state_clicked] # Use full DF for state click
+                filtered_df = df[df["State_Display"] == state_clicked]
                 
             elif trigger_id == 'bar-chart-severity':
                 severity_clicked = bar_severity_click['points'][0]['x']
                 filtered_df = filtered_df[filtered_df["Severity"] == severity_clicked]
-            
-            filter_applied = True
     
     # Generate links grouped by assignee
     if filtered_df.empty:
-        # Beautiful empty state when all defects are closed
         links_container = dhtml.Div([
             dhtml.Div([
                 dhtml.Div("🎉", style={"fontSize": "80px", "marginBottom": "20px"}),
                 dhtml.H3("All Defects Are Resolved!", 
                         style={"color": "#4CAF50", "marginBottom": "10px", "fontWeight": "bold"}),
                 dhtml.P("Great job! There are no open defects at the moment.", 
-                       style={"color": "#708090", "fontSize": "16px", "marginBottom": "20px"}),
+                       style={"color": "#708090", "fontSize": "14px", "marginBottom": "20px"}),
                 dhtml.Div([
                     dhtml.Div([
-                        dhtml.Div(str(closed_count), style={"fontSize": "40px", "fontWeight": "bold", "color": state_colors['Closed']}),
-                        dhtml.Div("Closed", style={"fontSize": "14px", "color": "#708090"})
+                        dhtml.Div(str(closed_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['Closed']}),
+                        dhtml.Div("Closed", style={"fontSize": "12px", "color": "#708090"})
                     ], style={"display": "inline-block", "margin": "0 15px", "padding": "10px"}),
                     dhtml.Div([
-                        dhtml.Div(str(resolved_count), style={"fontSize": "40px", "fontWeight": "bold", "color": state_colors['Resolved']}),
-                        dhtml.Div("Resolved", style={"fontSize": "14px", "color": "#708090"})
+                        dhtml.Div(str(resolved_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['Resolved']}),
+                        dhtml.Div("Resolved", style={"fontSize": "12px", "color": "#708090"})
                     ], style={"display": "inline-block", "margin": "0 15px", "padding": "10px"})
                 ], style={"marginTop": "20px"})
             ], style={
-                "textAlign": "center",
-                "padding": "40px 30px",
-                "backgroundColor": "white",
-                "borderRadius": "10px",
-                "boxShadow": "0 4px 10px rgba(0,0,0,0.05)",
-                "margin": "20px auto",
-                "maxWidth": "500px"
+                "textAlign": "center", "padding": "30px 20px", "backgroundColor": "white",
+                "borderRadius": "8px", "boxShadow": "0 4px 10px rgba(0,0,0,0.05)",
+                "margin": "20px auto", "maxWidth": "450px"
             })
         ])
     else:
@@ -412,22 +408,17 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
         for idx, (assignee, group_df) in enumerate(assignee_groups):
             assignee_display = assignee if assignee and assignee != "N/A" else "Unassigned"
             defect_count = len(group_df)
-            
-            # Create unique ID for this assignee
             assignee_id = f"assignee-section-{idx}"
             
-            # Create defect items for this assignee
             defect_items = []
             for _, row in group_df.iterrows():
-                # Use standard colors for a cleaner look
                 state_style = {
                     "New": {"backgroundColor": state_colors['New'], "color": "white"},
                     "Reopen": {"backgroundColor": state_colors['Reopen'], "color": "white"},
                     "Closed": {"backgroundColor": state_colors['Closed'], "color": "white"},
                     "Resolved": {"backgroundColor": state_colors['Resolved'], "color": "white"}
-                }.get(row.get("State_Display", ""), {"backgroundColor": "#607D8B", "color": "white"}) # Blue-Gray for unknown
+                }.get(row.get("State_Display", ""), {"backgroundColor": "#607D8B", "color": "white"})
                 
-                # Use the new severity colors
                 severity_style = {
                     "Critical": {"backgroundColor": severity_colors['Critical'], "color": "white"},
                     "High": {"backgroundColor": severity_colors['High'], "color": "white"},
@@ -436,12 +427,11 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                     "Suggestion": {"backgroundColor": severity_colors['Suggestion'], "color": "white"}
                 }.get(row.get("Severity", ""), {"backgroundColor": "#607D8B", "color": "white"})
                 
-                # Get title/summary
                 defect_title = str(row.get("Title", ""))
                 if not defect_title or defect_title == "N/A" or defect_title == "nan":
                     defect_title = "No summary available"
                 
-                # Defect item - Reduced size
+                # Defect item - Relocated "View" link
                 defect_item = dhtml.Div([
                     # First row: ID, State, Severity, Link
                     dhtml.Div([
@@ -452,12 +442,13 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                             "fontSize": "11px", "fontWeight": "bold", **state_style
                         }),
                         dhtml.Span(row.get("Severity", "N/A"), style={
-                            "padding": "3px 8px", "borderRadius": "3px", "marginRight": "15px",
+                            "padding": "3px 8px", "borderRadius": "3px", "marginRight": "10px", # Reduced margin
                             "fontSize": "11px", "fontWeight": "bold", **severity_style
                         }),
+                        # View Link moved next to Severity
                         dhtml.A("🔗 View", href=row.get("Issue Links", "#"), target="_blank",
                                style={"color": "#1976D2", "textDecoration": "none", "fontWeight": "bold", 
-                                     "marginLeft": "auto", "fontSize": "12px"})
+                                     "fontSize": "12px"})
                     ], style={
                         "display": "flex",
                         "alignItems": "center",
@@ -474,8 +465,8 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                         "paddingTop": "6px"
                     })
                 ], style={
-                    "padding": "12px 15px",
-                    "marginBottom": "10px",
+                    "padding": "10px 15px", # Reduced padding for smaller card
+                    "marginBottom": "8px", # Reduced margin
                     "backgroundColor": "#ffffff",
                     "borderRadius": "5px",
                     "border": "1px solid #CFD8DC",
@@ -484,7 +475,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                 
                 defect_items.append(defect_item)
             
-            # Assignee header (collapsible) with overflow fix
+            # Assignee header (collapsible) - OVERFLOW FIX & ALIGNMENT FIX
             assignee_section = dhtml.Div([
                 dhtml.Div([
                     dhtml.Span("▶", 
@@ -495,20 +486,22 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                                   "fontWeight": "bold", 
                                   "fontSize": "16px", 
                                   "color": "#1C2833",
-                                  "maxWidth": "400px", # Added for overflow
-                                  "overflow": "hidden", # Added for overflow
-                                  "textOverflow": "ellipsis", # Added for overflow
-                                  "whiteSpace": "nowrap", # Added for overflow
-                                  "display": "inline-block" # Added for overflow
+                                  "flexShrink": 1, # Allows it to shrink
+                                  "minWidth": "0", # Required for flex-shrink to work with text-overflow
+                                  "overflow": "hidden", 
+                                  "textOverflow": "ellipsis", 
+                                  "whiteSpace": "nowrap", 
+                                  "marginRight": "10px"
                               }),
-                    dhtml.Span(f" ({defect_count})", 
-                              style={"marginLeft": "10px", "fontSize": "13px", "color": "#708090"})
+                    # Defect count - ALIGNMENT FIX (uses flexbox on parent)
+                    dhtml.Span(f"({defect_count})", 
+                              style={"fontSize": "13px", "color": "#708090", "flexShrink": 0})
                 ], 
                 id=f"toggle-{assignee_id}",
                 n_clicks=0,
                 style={
                     "width": "100%",
-                    "padding": "12px 15px",
+                    "padding": "10px 15px", # Reduced padding
                     "backgroundColor": "#ffffff",
                     "border": "1px solid #1976D2",
                     "borderRadius": "6px",
@@ -517,7 +510,9 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                     "fontSize": "16px",
                     "marginBottom": "8px",
                     "boxShadow": "0 2px 5px rgba(0,0,0,0.1)",
-                    "transition": "all 0.3s ease"
+                    "transition": "all 0.3s ease",
+                    "display": "flex", # Added for alignment
+                    "alignItems": "center" # Added for alignment
                 }),
                 
                 dhtml.Div(
@@ -526,10 +521,10 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                     style={
                         "display": "none",
                         "padding": "5px 0",
-                        "marginBottom": "15px"
+                        "marginBottom": "10px"
                     }
                 )
-            ], id=assignee_id, style={"marginBottom": "10px"})
+            ], id=assignee_id, style={"marginBottom": "8px"})
             
             assignee_sections.append(assignee_section)
         
@@ -537,21 +532,15 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     
     last_updated = f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     
-    # Reset is_initial_load flag after first run
-    return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count, new_collapse_count, False
+    return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count, new_collapse_count
 
 # ---
 ## Clientside Callbacks for UI/UX
 
-# 1. Toggling Assignee Sections (Fixing the Arrow/Collapse Logic)
+# 1. Toggling Assignee Sections (Using the unique IDs)
 clientside_callback(
     """
     function(n_clicks) {
-        // This is a dummy output to ensure the Python generated components are in the DOM.
-        // The actual click handler is attached to the document.
-        // The python side must use the pattern 'id=f"toggle-{assignee_id}"' and 'id=f"content-{assignee_id}"'
-
-        // A simple way to get a unique identifier for the toggle.
         const toggleId = dash_clientside.callback_context.triggered[0].prop_id.split('.')[0];
         
         if (toggleId && toggleId.startsWith('toggle-assignee-section-')) {
@@ -567,7 +556,6 @@ clientside_callback(
                 
                 // Toggle arrow icon
                 arrow.textContent = isCollapsed ? '▼' : '▶';
-                arrow.style.transform = isCollapsed ? 'rotate(0deg)' : 'rotate(360deg)';
                 
                 // Change border color on expand
                 toggleElement.style.borderColor = isCollapsed ? '#007bff' : '#1976D2';
@@ -577,16 +565,14 @@ clientside_callback(
     }
     """,
     Output('scroll-output', 'children'), # Dummy output
-    [Input({'type': 'toggle', 'index': dash.dependencies.ALL}, 'n_clicks')],
+    [Input({'type': 'toggle', 'index': dash.ALL}, 'n_clicks')], # Using dash.ALL
     prevent_initial_call=True
 )
 
-# 2. Add dynamic click listeners for all generated toggle buttons
-# This function attaches a single event listener to the document to handle all future toggle clicks.
+# 2. Add dynamic click listeners for all generated toggle buttons (handles collapse on chart filter)
 clientside_callback(
     """
     function(data_store_data, collapse_trigger) {
-        // Only run this logic if data has loaded
         if (!data_store_data) {
             return '';
         }
@@ -614,7 +600,7 @@ clientside_callback(
             setTimeout(collapseAllSections, 100); 
         }
 
-        // Attach a single, persistent event listener to the document body
+        // Attach a single, persistent event listener to the document body (Handles manual clicks)
         if (!window.assigneeToggleListenerAttached) {
             document.addEventListener('click', function(e) {
                 let toggleElement = e.target.closest('[id^="toggle-assignee-section-"]');
@@ -624,11 +610,9 @@ clientside_callback(
                     const arrow = document.getElementById('arrow-' + sectionId);
                     
                     if (content && arrow) {
-                        // The main logic is now handled here, mirroring the Python logic (but in JS)
                         const isCollapsed = content.style.display === 'none' || content.style.display === '';
                         content.style.display = isCollapsed ? 'block' : 'none';
                         arrow.textContent = isCollapsed ? '▼' : '▶';
-                        arrow.style.transform = isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)';
                         toggleElement.style.borderColor = isCollapsed ? '#1976D2' : '#2196F3';
                     }
                 }
@@ -639,7 +623,7 @@ clientside_callback(
         return '';
     }
     """,
-    Output('scroll-output', 'style'), # Dummy output
+    Output('scroll-output', 'style', allow_duplicate=True), # Dummy output
     [Input('data-store', 'data'),
      Input('collapse-trigger', 'data')],
     prevent_initial_call=False
