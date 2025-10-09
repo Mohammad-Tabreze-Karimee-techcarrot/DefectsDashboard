@@ -444,45 +444,59 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, toggle
     
     return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count
 
-# Callback to handle assignee toggle
-@app.callback(
-    Output('collapsed-state', 'data'),
-    Input({'type': 'assignee-toggle', 'index': ALL}, 'n_clicks'),
-    State('collapsed-state', 'data'),
-    prevent_initial_call=True
-)
-def toggle_assignee(n_clicks, collapsed_state):
-    ctx = callback_context
-    if not ctx.triggered:
-        return collapsed_state
-    
-    triggered_id = ctx.triggered[0]['prop_id']
-    if 'assignee-toggle' in triggered_id:
-        import json
-        button_id = json.loads(triggered_id.split('.')[0])
-        assignee = button_id['index']
-        
-        if collapsed_state is None:
-            collapsed_state = {}
-        
-        collapsed_state[assignee] = not collapsed_state.get(assignee, False)
-    
-    return collapsed_state
-
-# Clientside callback for content visibility
+# Clientside callback for toggling assignee sections
 app.clientside_callback(
     """
-    function(n_clicks, current_style) {
-        if (!current_style) {
-            current_style = {display: 'none'};
+    function(n_clicks_list) {
+        // This gets triggered when ANY toggle button is clicked
+        // We need to find which one was clicked and toggle only that section
+        
+        const triggered = dash_clientside.callback_context.triggered;
+        if (!triggered || triggered.length === 0) {
+            return dash_clientside.no_update;
         }
-        const isHidden = current_style.display === 'none';
-        return {display: isHidden ? 'block' : 'none'};
+        
+        // Get the triggered button's ID
+        const triggeredProp = triggered[0].prop_id;
+        if (!triggeredProp || triggeredProp === '.') {
+            return dash_clientside.no_update;
+        }
+        
+        // Extract the index from the triggered button
+        const match = triggeredProp.match(/"index":"([^"]+)"/);
+        if (!match) {
+            return dash_clientside.no_update;
+        }
+        
+        const triggeredIndex = match[1];
+        
+        // Get all content divs
+        const contentDivs = document.querySelectorAll('[id*="assignee-content"]');
+        
+        // Toggle only the matching content div
+        contentDivs.forEach(div => {
+            const divId = div.id;
+            if (divId.includes(triggeredIndex)) {
+                const currentDisplay = div.style.display;
+                div.style.display = (currentDisplay === 'none' || currentDisplay === '') ? 'block' : 'none';
+                
+                // Also update the arrow in the button
+                const buttonId = divId.replace('assignee-content', 'assignee-toggle');
+                const button = document.getElementById(buttonId);
+                if (button) {
+                    const arrow = button.querySelector('span:first-child');
+                    if (arrow) {
+                        arrow.textContent = (div.style.display === 'block') ? '▼ ' : '▶ ';
+                    }
+                }
+            }
+        });
+        
+        return dash_clientside.no_update;
     }
     """,
-    Output({'type': 'assignee-content', 'index': ALL}, 'style'),
+    Output({'type': 'assignee-toggle', 'index': ALL}, 'style'),
     Input({'type': 'assignee-toggle', 'index': ALL}, 'n_clicks'),
-    State({'type': 'assignee-content', 'index': ALL}, 'style'),
     prevent_initial_call=True
 )
 
