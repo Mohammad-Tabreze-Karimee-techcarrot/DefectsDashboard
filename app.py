@@ -3,7 +3,7 @@ import pandas as pd
 from io import StringIO
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State
+from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State, clientside_callback
 from datetime import datetime
 import subprocess
 import threading
@@ -96,16 +96,17 @@ def schedule_data_refresh():
 refresh_thread = threading.Thread(target=schedule_data_refresh, daemon=True)
 refresh_thread.start()
 
-# Define colors - UPDATED COLOR SCHEME
-state_colors = {"New": "#dc3545", "Reopen": "#7d1e2b", "Closed": "#28a745", "Resolved": "#fd7e14"}
+# Define colors - UPDATED COLOR SCHEME for professional look
+# Using a deep primary blue for New/Reopen, a soft green for Closed, and amber for Resolved
+state_colors = {"New": "#E53935", "Reopen": "#C62828", "Closed": "#4CAF50", "Resolved": "#FF9800"}
 
-# NEW: Severity colors matching your requirements
+# Severity colors - keeping the high contrast for critical issues
 severity_colors = {
-    "Critical": "#dc3545",  # Red
-    "High": "#dc3545",      # Red
-    "Medium": "#fd7e14",    # Orange
-    "Low": "#ffc107",       # Yellow
-    "Suggestion": "#17a2b8" # Ice Blue
+    "Critical": "#E53935",  # Deep Red
+    "High": "#FF7043",      # Lighter Orange/Red
+    "Medium": "#FFB300",    # Amber
+    "Low": "#42A5F5",       # Light Blue
+    "Suggestion": "#81C784" # Soft Green
 }
 
 severity_order = ["Critical", "High", "Medium", "Low", "Suggestion"]
@@ -124,44 +125,47 @@ app.layout = dhtml.Div([
     ),
     dcc.Store(id='data-store'),
     dcc.Store(id='scroll-trigger', data=0),
-    dcc.Store(id='collapsed-state', data={}),
+    dcc.Store(id='collapse-trigger', data=0), # NEW: Trigger for collapse on chart click
     dhtml.Div([
         dhtml.H1("Projects Defects Dashboard", 
-                style={"textAlign": "center", "color": "#2c3e50", "marginBottom": "10px",
-                       "fontFamily": "Arial, sans-serif", "fontWeight": "bold"}),
-        dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#7f8c8d", 
-                                            "fontSize": "14px", "marginBottom": "20px"})
+                style={"textAlign": "center", "color": "#1C2833", "marginBottom": "10px",
+                       "fontFamily": "Segoe UI, Arial, sans-serif", "fontWeight": "600"}),
+        dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#708090", 
+                                            "fontSize": "13px", "marginBottom": "20px"})
     ]),
     
     dhtml.Div([
         dhtml.Label("Select Project:", style={"fontWeight": "bold", "marginRight": "10px", 
-                                               "fontSize": "16px", "color": "#2c3e50"}),
+                                               "fontSize": "15px", "color": "#1C2833"}),
         dcc.Dropdown(
             id='project-selector',
             options=[{'label': name, 'value': name} for name in PROJECTS.keys()],
             value=list(PROJECTS.keys())[0],
-            style={"width": "400px", "display": "inline-block"}
+            style={"width": "350px", "display": "inline-block", "boxShadow": "0 1px 3px rgba(0,0,0,0.1)"}
         )
     ], style={"textAlign": "center", "marginBottom": "30px"}),
 
     dhtml.Div(id="status-table"),
 
+    # Charts section: Reduced width for a smaller view
     dhtml.Div([
-        dcc.Graph(id="pie-chart", style={"width": "33%", "height": "400px"}, config={'displayModeBar': False}),
-        dcc.Graph(id="bar-chart-state", style={"width": "33%", "height": "400px"}, config={'displayModeBar': False}),
-        dcc.Graph(id="bar-chart-severity", style={"width": "33%", "height": "400px"}, config={'displayModeBar': False})
-    ], style={"display": "flex", "flexDirection": "row", "justifyContent": "space-between",
+        dcc.Graph(id="pie-chart", style={"width": "32%", "height": "350px", "margin": "0.5%"}, config={'displayModeBar': False}),
+        dcc.Graph(id="bar-chart-state", style={"width": "32%", "height": "350px", "margin": "0.5%"}, config={'displayModeBar': False}),
+        dcc.Graph(id="bar-chart-severity", style={"width": "32%", "height": "350px", "margin": "0.5%"}, config={'displayModeBar': False})
+    ], style={"display": "flex", "flexDirection": "row", "justifyContent": "space-around",
               "alignItems": "flex-start", "flexWrap": "nowrap", "marginBottom": "30px",
-              "padding": "0 20px"}),
+              "padding": "0 10px"}),
 
     dhtml.H2("🔗 Defects with Details", 
             id="defects-section",
-            style={"marginTop": "30px", "marginLeft": "20px", "color": "#2c3e50",
-                   "fontFamily": "Arial, sans-serif", "fontWeight": "bold"}),
+            style={"marginTop": "30px", "marginLeft": "20px", "color": "#1C2833",
+                   "fontFamily": "Segoe UI, Arial, sans-serif", "fontWeight": "600"}),
     dhtml.Div(id="links-container", style={"marginTop": "20px", "padding": "0 20px"}),
     
-    dhtml.Div(id='scroll-output', style={'display': 'none'})
-], style={"backgroundColor": "#f8f9fa", "minHeight": "100vh", "padding": "20px 0"})
+    # Hidden components for callbacks
+    dhtml.Div(id='scroll-output', style={'display': 'none'}),
+    dcc.Store(id='initial-load-flag', data=True) # Used to skip initial collapse
+], style={"backgroundColor": "#f4f6f9", "minHeight": "100vh", "padding": "20px 0"})
 
 @app.callback(
     Output('data-store', 'data'),
@@ -179,21 +183,25 @@ def update_data_store(n, selected_project):
      Output("bar-chart-severity", "figure"),
      Output("links-container", "children"),
      Output("last-updated", "children"),
-     Output("scroll-trigger", "data")],
+     Output("scroll-trigger", "data"),
+     Output("collapse-trigger", "data"), # NEW output
+     Output("initial-load-flag", "data")], # Used to track initial load
     [Input('data-store', 'data'),
      Input("pie-chart", "clickData"),
      Input("bar-chart-state", "clickData"),
      Input("bar-chart-severity", "clickData")],
-    [State("scroll-trigger", "data")]
+    [State("scroll-trigger", "data"),
+     State("collapse-trigger", "data"),
+     State("initial-load-flag", "data")]
 )
-def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count):
+def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count, collapse_count, is_initial_load):
     if not json_data:
-        return None, {}, {}, {}, None, "", scroll_count
+        return None, {}, {}, {}, None, "", scroll_count, collapse_count, is_initial_load
     
     df = pd.read_json(StringIO(json_data), orient='split')
     
     if df.empty:
-        return None, {}, {}, {}, None, "", scroll_count
+        return None, {}, {}, {}, None, "", scroll_count, collapse_count, is_initial_load
     
     # Filter for open defects
     df_open = df[~df["State_Display"].str.lower().isin(["closed", "resolved"])]
@@ -212,43 +220,48 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     closed_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum()) if "Closed" in state_counts_df["State_Display"].values else 0
     resolved_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum()) if "Resolved" in state_counts_df["State_Display"].values else 0
     
-    # Status Table
+    # Status Table - Reduced size
     status_table = dhtml.Div([
         dhtml.Div([
             dhtml.Div([
-                dhtml.Div(str(total_defects), style={"fontSize": "36px", "fontWeight": "bold", "color": "#2c3e50"}),
-                dhtml.Div("Total Defects", style={"fontSize": "14px", "color": "#7f8c8d"})
-            ], style={"textAlign": "center", "padding": "20px", "backgroundColor": "#e9ecef", 
-                     "borderRadius": "10px", "margin": "10px", "flex": "1"}),
+                dhtml.Div(str(total_defects), style={"fontSize": "30px", "fontWeight": "bold", "color": "#1C2833"}),
+                dhtml.Div("Total Defects", style={"fontSize": "12px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#EBF0F7", # Light Blue-Gray background
+                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                     "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
             dhtml.Div([
-                dhtml.Div(str(new_count), style={"fontSize": "36px", "fontWeight": "bold", "color": "#dc3545"}),
-                dhtml.Div("New", style={"fontSize": "14px", "color": "#7f8c8d"})
-            ], style={"textAlign": "center", "padding": "20px", "backgroundColor": "#f8d7da", 
-                     "borderRadius": "10px", "margin": "10px", "flex": "1"}),
+                dhtml.Div(str(new_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['New']}),
+                dhtml.Div("New", style={"fontSize": "12px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#FFEBEB", # Soft Red background
+                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                     "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
             dhtml.Div([
-                dhtml.Div(str(reopen_count), style={"fontSize": "36px", "fontWeight": "bold", "color": "#7d1e2b"}),
-                dhtml.Div("Reopen", style={"fontSize": "14px", "color": "#7f8c8d"})
-            ], style={"textAlign": "center", "padding": "20px", "backgroundColor": "#f5c6cb", 
-                     "borderRadius": "10px", "margin": "10px", "flex": "1"}),
+                dhtml.Div(str(reopen_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['Reopen']}),
+                dhtml.Div("Reopen", style={"fontSize": "12px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#FEE4E4", # Very soft Red background
+                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                     "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
             dhtml.Div([
-                dhtml.Div(str(closed_count), style={"fontSize": "36px", "fontWeight": "bold", "color": "#28a745"}),
-                dhtml.Div("Closed", style={"fontSize": "14px", "color": "#7f8c8d"})
-            ], style={"textAlign": "center", "padding": "20px", "backgroundColor": "#d4edda", 
-                     "borderRadius": "10px", "margin": "10px", "flex": "1"}),
+                dhtml.Div(str(closed_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['Closed']}),
+                dhtml.Div("Closed", style={"fontSize": "12px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#E8F5E9", # Soft Green background
+                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                     "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
             dhtml.Div([
-                dhtml.Div(str(resolved_count), style={"fontSize": "36px", "fontWeight": "bold", "color": "#fd7e14"}),
-                dhtml.Div("Resolved", style={"fontSize": "14px", "color": "#7f8c8d"})
-            ], style={"textAlign": "center", "padding": "20px", "backgroundColor": "#ffe5d0", 
-                     "borderRadius": "10px", "margin": "10px", "flex": "1"}),
-        ], style={"display": "flex", "flexDirection": "row", "justifyContent": "space-around", 
+                dhtml.Div(str(resolved_count), style={"fontSize": "30px", "fontWeight": "bold", "color": state_colors['Resolved']}),
+                dhtml.Div("Resolved", style={"fontSize": "12px", "color": "#708090"})
+            ], style={"textAlign": "center", "padding": "15px", "backgroundColor": "#FFF8E1", # Soft Amber background
+                     "borderRadius": "8px", "margin": "8px", "flex": "1", "minWidth": "100px",
+                     "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
+        ], style={"display": "flex", "flexDirection": "row", "justifyContent": "center", 
                  "flexWrap": "wrap", "padding": "0 20px"})
     ])
     
-    # Pie Chart with NEW colors
+    # Pie Chart
     if severity_counts["Count"].sum() == 0:
         # Empty state for pie chart
         fig_pie = go.Figure()
@@ -256,12 +269,13 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             text="🎉<br>No Open Defects!",
             xref="paper", yref="paper",
             x=0.5, y=0.5, showarrow=False,
-            font=dict(size=20, color="#28a745", family="Arial"),
+            font=dict(size=20, color="#4CAF50", family="Segoe UI"),
             align="center"
         )
         fig_pie.update_layout(
             title="Open Defects by Severity",
-            margin=dict(l=20, r=20, t=40, b=20),
+            title_font_size=16,
+            margin=dict(l=10, r=10, t=40, b=10),
             showlegend=False,
             xaxis=dict(visible=False),
             yaxis=dict(visible=False)
@@ -278,8 +292,10 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
         )])
         fig_pie.update_layout(
             title="Open Defects by Severity",
-            margin=dict(l=20, r=20, t=40, b=20),
-            showlegend=True
+            title_font_size=16,
+            margin=dict(l=10, r=10, t=40, b=10),
+            showlegend=True,
+            legend=dict(font=dict(size=10))
         )
     
     # Bar Chart (State Distribution)
@@ -287,9 +303,10 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                           color="State_Display", color_discrete_map=state_colors)
     fig_bar_state.update_traces(hovertemplate='%{x}: %{y}<extra></extra>')
     fig_bar_state.update_layout(xaxis_title="", yaxis_title="Count", showlegend=False,
-                               margin=dict(l=20, r=20, t=40, b=20))
+                               title_font_size=16,
+                               margin=dict(l=10, r=10, t=40, b=10))
     
-    # Bar Chart (Severity Distribution) with NEW colors
+    # Bar Chart (Severity Distribution)
     if severity_counts["Count"].sum() == 0:
         # Empty state for severity bar chart
         fig_bar_severity = go.Figure()
@@ -297,15 +314,16 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             text="🎉<br>Congratulations!<br>No Open Defects Found",
             xref="paper", yref="paper",
             x=0.5, y=0.5, showarrow=False,
-            font=dict(size=18, color="#28a745", family="Arial"),
+            font=dict(size=16, color="#4CAF50", family="Segoe UI"),
             align="center"
         )
         fig_bar_severity.update_layout(
             title="Open Defects by Severity",
+            title_font_size=16,
             xaxis_title="",
             yaxis_title="Count",
             showlegend=False,
-            margin=dict(l=20, r=20, t=40, b=20),
+            margin=dict(l=10, r=10, t=40, b=10),
             xaxis=dict(visible=False),
             yaxis=dict(visible=False)
         )
@@ -319,38 +337,41 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
         )])
         fig_bar_severity.update_layout(
             title="Open Defects by Severity",
+            title_font_size=16,
             xaxis_title="",
             yaxis_title="Count",
             showlegend=False,
-            margin=dict(l=20, r=20, t=40, b=20)
+            margin=dict(l=10, r=10, t=40, b=10)
         )
     
     # Determine filter based on clicks
     filtered_df = df_open.copy()
     filter_applied = False
     new_scroll_count = scroll_count
+    new_collapse_count = collapse_count
     
     ctx = callback_context
     if ctx.triggered:
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
-        if trigger_id == 'pie-chart' and pie_click:
-            severity_clicked = pie_click['points'][0]['label']
-            filtered_df = filtered_df[filtered_df["Severity"] == severity_clicked]
-            filter_applied = True
+        # Increment scroll and collapse triggers on ANY chart click
+        if trigger_id in ['pie-chart', 'bar-chart-state', 'bar-chart-severity'] and ctx.triggered[0]['value']:
             new_scroll_count += 1
-        
-        elif trigger_id == 'bar-chart-state' and bar_state_click:
-            state_clicked = bar_state_click['points'][0]['x']
-            filtered_df = df[df["State_Display"] == state_clicked]
+            new_collapse_count += 1 # Trigger a collapse action
+            
+            if trigger_id == 'pie-chart':
+                severity_clicked = pie_click['points'][0]['label']
+                filtered_df = filtered_df[filtered_df["Severity"] == severity_clicked]
+            
+            elif trigger_id == 'bar-chart-state':
+                state_clicked = bar_state_click['points'][0]['x']
+                filtered_df = df[df["State_Display"] == state_clicked] # Use full DF for state click
+                
+            elif trigger_id == 'bar-chart-severity':
+                severity_clicked = bar_severity_click['points'][0]['x']
+                filtered_df = filtered_df[filtered_df["Severity"] == severity_clicked]
+            
             filter_applied = True
-            new_scroll_count += 1
-        
-        elif trigger_id == 'bar-chart-severity' and bar_severity_click:
-            severity_clicked = bar_severity_click['points'][0]['x']
-            filtered_df = filtered_df[filtered_df["Severity"] == severity_clicked]
-            filter_applied = True
-            new_scroll_count += 1
     
     # Generate links grouped by assignee
     if filtered_df.empty:
@@ -359,27 +380,27 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             dhtml.Div([
                 dhtml.Div("🎉", style={"fontSize": "80px", "marginBottom": "20px"}),
                 dhtml.H3("All Defects Are Resolved!", 
-                        style={"color": "#28a745", "marginBottom": "10px", "fontWeight": "bold"}),
+                        style={"color": "#4CAF50", "marginBottom": "10px", "fontWeight": "bold"}),
                 dhtml.P("Great job! There are no open defects at the moment.", 
-                       style={"color": "#6c757d", "fontSize": "16px", "marginBottom": "20px"}),
+                       style={"color": "#708090", "fontSize": "16px", "marginBottom": "20px"}),
                 dhtml.Div([
                     dhtml.Div([
-                        dhtml.Div(str(closed_count), style={"fontSize": "48px", "fontWeight": "bold", "color": "#28a745"}),
-                        dhtml.Div("Closed", style={"fontSize": "14px", "color": "#7f8c8d"})
-                    ], style={"display": "inline-block", "margin": "0 20px"}),
+                        dhtml.Div(str(closed_count), style={"fontSize": "40px", "fontWeight": "bold", "color": state_colors['Closed']}),
+                        dhtml.Div("Closed", style={"fontSize": "14px", "color": "#708090"})
+                    ], style={"display": "inline-block", "margin": "0 15px", "padding": "10px"}),
                     dhtml.Div([
-                        dhtml.Div(str(resolved_count), style={"fontSize": "48px", "fontWeight": "bold", "color": "#fd7e14"}),
-                        dhtml.Div("Resolved", style={"fontSize": "14px", "color": "#7f8c8d"})
-                    ], style={"display": "inline-block", "margin": "0 20px"})
-                ], style={"marginTop": "30px"})
+                        dhtml.Div(str(resolved_count), style={"fontSize": "40px", "fontWeight": "bold", "color": state_colors['Resolved']}),
+                        dhtml.Div("Resolved", style={"fontSize": "14px", "color": "#708090"})
+                    ], style={"display": "inline-block", "margin": "0 15px", "padding": "10px"})
+                ], style={"marginTop": "20px"})
             ], style={
                 "textAlign": "center",
-                "padding": "60px 40px",
+                "padding": "40px 30px",
                 "backgroundColor": "white",
-                "borderRadius": "15px",
-                "boxShadow": "0 4px 6px rgba(0,0,0,0.1)",
+                "borderRadius": "10px",
+                "boxShadow": "0 4px 10px rgba(0,0,0,0.05)",
                 "margin": "20px auto",
-                "maxWidth": "600px"
+                "maxWidth": "500px"
             })
         ])
     else:
@@ -397,92 +418,104 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             # Create defect items for this assignee
             defect_items = []
             for _, row in group_df.iterrows():
+                # Use standard colors for a cleaner look
                 state_style = {
-                    "New": {"backgroundColor": "#dc3545", "color": "white"},
-                    "Reopen": {"backgroundColor": "#7d1e2b", "color": "white"},
-                    "Closed": {"backgroundColor": "#28a745", "color": "white"},
-                    "Resolved": {"backgroundColor": "#fd7e14", "color": "white"}
-                }.get(row.get("State_Display", ""), {"backgroundColor": "#6c757d", "color": "white"})
+                    "New": {"backgroundColor": state_colors['New'], "color": "white"},
+                    "Reopen": {"backgroundColor": state_colors['Reopen'], "color": "white"},
+                    "Closed": {"backgroundColor": state_colors['Closed'], "color": "white"},
+                    "Resolved": {"backgroundColor": state_colors['Resolved'], "color": "white"}
+                }.get(row.get("State_Display", ""), {"backgroundColor": "#607D8B", "color": "white"}) # Blue-Gray for unknown
                 
+                # Use the new severity colors
                 severity_style = {
-                    "Critical": {"backgroundColor": "#dc3545", "color": "white"},
-                    "High": {"backgroundColor": "#dc3545", "color": "white"},
-                    "Medium": {"backgroundColor": "#fd7e14", "color": "white"},
-                    "Low": {"backgroundColor": "#ffc107", "color": "black"},
-                    "Suggestion": {"backgroundColor": "#17a2b8", "color": "white"}
-                }.get(row.get("Severity", ""), {"backgroundColor": "#6c757d", "color": "white"})
+                    "Critical": {"backgroundColor": severity_colors['Critical'], "color": "white"},
+                    "High": {"backgroundColor": severity_colors['High'], "color": "white"},
+                    "Medium": {"backgroundColor": severity_colors['Medium'], "color": "white"},
+                    "Low": {"backgroundColor": severity_colors['Low'], "color": "white"},
+                    "Suggestion": {"backgroundColor": severity_colors['Suggestion'], "color": "white"}
+                }.get(row.get("Severity", ""), {"backgroundColor": "#607D8B", "color": "white"})
                 
-                # Get title/summary - FIXED to use the correct column name
+                # Get title/summary
                 defect_title = str(row.get("Title", ""))
                 if not defect_title or defect_title == "N/A" or defect_title == "nan":
                     defect_title = "No summary available"
                 
+                # Defect item - Reduced size
                 defect_item = dhtml.Div([
                     # First row: ID, State, Severity, Link
                     dhtml.Div([
                         dhtml.Span(f"{row.get('ID', 'N/A')}", 
-                                  style={"fontWeight": "bold", "marginRight": "15px", "color": "#2c3e50", "fontSize": "14px"}),
+                                  style={"fontWeight": "600", "marginRight": "15px", "color": "#1C2833", "fontSize": "13px"}),
                         dhtml.Span(row.get("State_Display", "N/A"), style={
-                            "padding": "4px 10px", "borderRadius": "4px", "marginRight": "10px",
-                            "fontSize": "12px", "fontWeight": "bold", **state_style
+                            "padding": "3px 8px", "borderRadius": "3px", "marginRight": "10px",
+                            "fontSize": "11px", "fontWeight": "bold", **state_style
                         }),
                         dhtml.Span(row.get("Severity", "N/A"), style={
-                            "padding": "4px 10px", "borderRadius": "4px", "marginRight": "15px",
-                            "fontSize": "12px", "fontWeight": "bold", **severity_style
+                            "padding": "3px 8px", "borderRadius": "3px", "marginRight": "15px",
+                            "fontSize": "11px", "fontWeight": "bold", **severity_style
                         }),
                         dhtml.A("🔗 View", href=row.get("Issue Links", "#"), target="_blank",
-                               style={"color": "#007bff", "textDecoration": "none", "fontWeight": "bold", 
-                                     "marginLeft": "auto", "fontSize": "13px"})
+                               style={"color": "#1976D2", "textDecoration": "none", "fontWeight": "bold", 
+                                     "marginLeft": "auto", "fontSize": "12px"})
                     ], style={
                         "display": "flex",
                         "alignItems": "center",
                         "flexWrap": "wrap",
-                        "marginBottom": "10px"
+                        "marginBottom": "8px"
                     }),
                     # Second row: Summary
                     dhtml.Div([
-                        dhtml.Span("Summary: ", style={"fontWeight": "bold", "color": "#495057", "fontSize": "13px"}),
-                        dhtml.Span(defect_title, style={"color": "#6c757d", "fontSize": "13px", "lineHeight": "1.6"})
+                        dhtml.Span("Summary: ", style={"fontWeight": "600", "color": "#546E7A", "fontSize": "12px"}),
+                        dhtml.Span(defect_title, style={"color": "#607D8B", "fontSize": "12px", "lineHeight": "1.5"})
                     ], style={
                         "paddingLeft": "0px",
-                        "borderTop": "1px solid #e9ecef",
-                        "paddingTop": "8px"
+                        "borderTop": "1px solid #E0E0E0",
+                        "paddingTop": "6px"
                     })
                 ], style={
-                    "padding": "14px 16px",
-                    "marginBottom": "12px",
+                    "padding": "12px 15px",
+                    "marginBottom": "10px",
                     "backgroundColor": "#ffffff",
-                    "borderRadius": "6px",
-                    "border": "1px solid #dee2e6",
-                    "boxShadow": "0 1px 3px rgba(0,0,0,0.05)"
+                    "borderRadius": "5px",
+                    "border": "1px solid #CFD8DC",
+                    "boxShadow": "0 1px 2px rgba(0,0,0,0.05)"
                 })
                 
                 defect_items.append(defect_item)
             
-            # Assignee header (collapsible) with onclick
+            # Assignee header (collapsible) with overflow fix
             assignee_section = dhtml.Div([
                 dhtml.Div([
                     dhtml.Span("▶", 
                               id=f"arrow-{assignee_id}",
-                              style={"marginRight": "10px", "fontSize": "14px", "display": "inline-block", "width": "15px"}),
+                              style={"marginRight": "10px", "fontSize": "14px", "display": "inline-block", "width": "15px", "transition": "transform 0.2s ease"}),
                     dhtml.Span(f"{assignee_display}", 
-                              style={"fontWeight": "bold", "fontSize": "18px", "color": "#2c3e50"}),
-                    dhtml.Span(f" ({defect_count} defect{'s' if defect_count != 1 else ''})", 
-                              style={"marginLeft": "10px", "fontSize": "14px", "color": "#6c757d"})
+                              style={
+                                  "fontWeight": "bold", 
+                                  "fontSize": "16px", 
+                                  "color": "#1C2833",
+                                  "maxWidth": "400px", # Added for overflow
+                                  "overflow": "hidden", # Added for overflow
+                                  "textOverflow": "ellipsis", # Added for overflow
+                                  "whiteSpace": "nowrap", # Added for overflow
+                                  "display": "inline-block" # Added for overflow
+                              }),
+                    dhtml.Span(f" ({defect_count})", 
+                              style={"marginLeft": "10px", "fontSize": "13px", "color": "#708090"})
                 ], 
                 id=f"toggle-{assignee_id}",
                 n_clicks=0,
                 style={
                     "width": "100%",
-                    "padding": "15px 20px",
+                    "padding": "12px 15px",
                     "backgroundColor": "#ffffff",
-                    "border": "2px solid #007bff",
-                    "borderRadius": "8px",
+                    "border": "1px solid #1976D2",
+                    "borderRadius": "6px",
                     "cursor": "pointer",
                     "textAlign": "left",
                     "fontSize": "16px",
-                    "marginBottom": "10px",
-                    "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
+                    "marginBottom": "8px",
+                    "boxShadow": "0 2px 5px rgba(0,0,0,0.1)",
                     "transition": "all 0.3s ease"
                 }),
                 
@@ -491,11 +524,11 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                     id=f"content-{assignee_id}",
                     style={
                         "display": "none",
-                        "padding": "10px 0",
-                        "marginBottom": "20px"
+                        "padding": "5px 0",
+                        "marginBottom": "15px"
                     }
                 )
-            ], style={"marginBottom": "15px"})
+            ], id=assignee_id, style={"marginBottom": "10px"})
             
             assignee_sections.append(assignee_section)
         
@@ -503,48 +536,116 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     
     last_updated = f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     
-    return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count
+    # Reset is_initial_load flag after first run
+    return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count, new_collapse_count, False
 
-# Clientside callback for toggling assignee sections
-app.clientside_callback(
+# ---
+## Clientside Callbacks for UI/UX
+
+# 1. Toggling Assignee Sections (Fixing the Arrow/Collapse Logic)
+clientside_callback(
     """
-    function() {
-        // This runs once when the page loads to set up click handlers
-        setTimeout(function() {
+    function(n_clicks) {
+        // This is a dummy output to ensure the Python generated components are in the DOM.
+        // The actual click handler is attached to the document.
+        // The python side must use the pattern 'id=f"toggle-{assignee_id}"' and 'id=f"content-{assignee_id}"'
+
+        // A simple way to get a unique identifier for the toggle.
+        const toggleId = dash_clientside.callback_context.triggered[0].prop_id.split('.')[0];
+        
+        if (toggleId && toggleId.startsWith('toggle-assignee-section-')) {
+            const sectionId = toggleId.replace('toggle-', '');
+            const content = document.getElementById('content-' + sectionId);
+            const arrow = document.getElementById('arrow-' + sectionId);
+            const toggleElement = document.getElementById(toggleId);
+
+            if (content && arrow && toggleElement) {
+                // Toggle display
+                const isCollapsed = content.style.display === 'none' || content.style.display === '';
+                content.style.display = isCollapsed ? 'block' : 'none';
+                
+                // Toggle arrow icon
+                arrow.textContent = isCollapsed ? '▼' : '▶';
+                arrow.style.transform = isCollapsed ? 'rotate(0deg)' : 'rotate(360deg)';
+                
+                // Change border color on expand
+                toggleElement.style.borderColor = isCollapsed ? '#007bff' : '#1976D2';
+            }
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output('scroll-output', 'children'), # Dummy output
+    [Input({'type': 'toggle', 'index': dash.dependencies.ALL}, 'n_clicks')],
+    prevent_initial_call=True
+)
+
+# 2. Add dynamic click listeners for all generated toggle buttons
+# This function attaches a single event listener to the document to handle all future toggle clicks.
+clientside_callback(
+    """
+    function(data_store_data, collapse_trigger) {
+        // Only run this logic if data has loaded
+        if (!data_store_data) {
+            return '';
+        }
+        
+        // This function will collapse all open sections (used for filtering/project change)
+        function collapseAllSections() {
+            const toggleButtons = document.querySelectorAll('[id^="toggle-assignee-section-"]');
+            toggleButtons.forEach(toggleElement => {
+                const sectionId = toggleElement.id.replace('toggle-', '');
+                const content = document.getElementById('content-' + sectionId);
+                const arrow = document.getElementById('arrow-' + sectionId);
+                
+                if (content && arrow && content.style.display !== 'none') {
+                    content.style.display = 'none';
+                    arrow.textContent = '▶';
+                    toggleElement.style.borderColor = '#1976D2'; // Reset border color
+                }
+            });
+        }
+        
+        // Collapse all sections when the collapse trigger changes (i.e., on chart click)
+        if (dash_clientside.callback_context.triggered.length > 0 && 
+            dash_clientside.callback_context.triggered[0].prop_id.startsWith('collapse-trigger')) {
+            // Give the DOM a moment to render the new list before collapsing
+            setTimeout(collapseAllSections, 100); 
+        }
+
+        // Attach a single, persistent event listener to the document body
+        if (!window.assigneeToggleListenerAttached) {
             document.addEventListener('click', function(e) {
-                // Check if clicked element or its parent has an ID starting with 'toggle-assignee-section-'
                 let toggleElement = e.target.closest('[id^="toggle-assignee-section-"]');
                 if (toggleElement) {
-                    const toggleId = toggleElement.id;
-                    const sectionId = toggleId.replace('toggle-', '');
-                    const contentId = 'content-' + sectionId;
-                    const arrowId = 'arrow-' + sectionId;
-                    
-                    const content = document.getElementById(contentId);
-                    const arrow = document.getElementById(arrowId);
+                    const sectionId = toggleElement.id.replace('toggle-', '');
+                    const content = document.getElementById('content-' + sectionId);
+                    const arrow = document.getElementById('arrow-' + sectionId);
                     
                     if (content && arrow) {
-                        if (content.style.display === 'none' || content.style.display === '') {
-                            content.style.display = 'block';
-                            arrow.textContent = '▼';
-                        } else {
-                            content.style.display = 'none';
-                            arrow.textContent = '▶';
-                        }
+                        // The main logic is now handled here, mirroring the Python logic (but in JS)
+                        const isCollapsed = content.style.display === 'none' || content.style.display === '';
+                        content.style.display = isCollapsed ? 'block' : 'none';
+                        arrow.textContent = isCollapsed ? '▼' : '▶';
+                        arrow.style.transform = isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)';
+                        toggleElement.style.borderColor = isCollapsed ? '#1976D2' : '#2196F3';
                     }
                 }
             });
-        }, 500);
+            window.assigneeToggleListenerAttached = true;
+        }
+        
         return '';
     }
     """,
-    Output('scroll-output', 'children'),
-    Input('data-store', 'data'),
+    Output('scroll-output', 'style'), # Dummy output
+    [Input('data-store', 'data'),
+     Input('collapse-trigger', 'data')],
     prevent_initial_call=False
 )
 
-# Scroll callback - FIXED
-app.clientside_callback(
+# 3. Scroll to Defects Section on Chart Click
+clientside_callback(
     """
     function(scroll_trigger) {
         if (scroll_trigger && scroll_trigger > 0) {
@@ -558,10 +659,11 @@ app.clientside_callback(
         return {display: 'none'};
     }
     """,
-    Output('scroll-output', 'style'),
+    Output('scroll-output', 'children', allow_duplicate=True),
     Input('scroll-trigger', 'data'),
     prevent_initial_call=True
 )
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
