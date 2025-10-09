@@ -29,7 +29,7 @@ def load_data(project_name):
         if os.path.exists(data_folder):
             available_files = os.listdir(data_folder)
             print(f"Available files in data folder: {available_files}")
-        return pd.DataFrame(columns=["State", "ID", "Issue Links", "Severity", "Assigned To"])
+        return pd.DataFrame(columns=["State", "ID", "Issue Links", "Severity", "Assigned To", "Title"])
     
     df = pd.read_excel(excel_file)
     
@@ -45,7 +45,7 @@ def load_data(project_name):
         }
         df["State_Display"] = df["State"].map(state_mapping).fillna(df["State"])
     
-    required_cols = ["State", "ID", "Issue Links", "Severity", "Assigned To"]
+    required_cols = ["State", "ID", "Issue Links", "Severity", "Assigned To", "Title"]
     for col in required_cols:
         if col not in df.columns:
             df[col] = "N/A"
