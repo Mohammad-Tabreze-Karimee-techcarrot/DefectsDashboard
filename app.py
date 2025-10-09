@@ -4,6 +4,7 @@ from io import StringIO
 import plotly.express as px
 import plotly.graph_objects as go
 from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State, clientside_callback
+import dash
 from datetime import datetime
 import subprocess
 import threading
