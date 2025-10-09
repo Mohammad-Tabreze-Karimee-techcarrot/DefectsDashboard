@@ -113,7 +113,7 @@ severity_order = ["Critical", "High", "Medium", "Low", "Suggestion"]
 # App
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
-app.title = "Multi-Project Defects Dashboard"
+app.title = "Projects Defects Dashboard"
 
 # Layout
 app.layout = dhtml.Div([
@@ -126,7 +126,7 @@ app.layout = dhtml.Div([
     dcc.Store(id='scroll-trigger', data=0),
     dcc.Store(id='collapsed-state', data={}),
     dhtml.Div([
-        dhtml.H1("Multi-Project Defects Dashboard", 
+        dhtml.H1("Projects Defects Dashboard", 
                 style={"textAlign": "center", "color": "#2c3e50", "marginBottom": "10px",
                        "fontFamily": "Arial, sans-serif", "fontWeight": "bold"}),
         dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#7f8c8d", 
@@ -508,23 +508,14 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
 # Clientside callback for toggling assignee sections
 app.clientside_callback(
     """
-    function(links_content) {
-        // Only run if content exists
-        if (!links_content) {
-            return window.dash_clientside.no_update;
-        }
-        
-        // Small delay to ensure DOM is fully rendered
+    function() {
+        // This runs once when the page loads to set up click handlers
         setTimeout(function() {
-            const toggles = document.querySelectorAll('[id^="toggle-assignee-section-"]');
-            
-            toggles.forEach(toggle => {
-                // Remove existing listener if any
-                toggle.onclick = null;
-                
-                // Add new click listener
-                toggle.onclick = function() {
-                    const toggleId = this.id;
+            document.addEventListener('click', function(e) {
+                // Check if clicked element or its parent has an ID starting with 'toggle-assignee-section-'
+                let toggleElement = e.target.closest('[id^="toggle-assignee-section-"]');
+                if (toggleElement) {
+                    const toggleId = toggleElement.id;
                     const sectionId = toggleId.replace('toggle-', '');
                     const contentId = 'content-' + sectionId;
                     const arrowId = 'arrow-' + sectionId;
@@ -541,16 +532,15 @@ app.clientside_callback(
                             arrow.textContent = '▶';
                         }
                     }
-                };
+                }
             });
-        }, 100);
-        
-        return window.dash_clientside.no_update;
+        }, 500);
+        return '';
     }
     """,
     Output('scroll-output', 'children'),
-    Input('links-container', 'children'),
-    prevent_initial_call=True
+    Input('data-store', 'data'),
+    prevent_initial_call=False
 )
 
 # Scroll callback - FIXED

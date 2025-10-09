@@ -44,8 +44,8 @@ else:
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
-# Jira API v2 endpoint (more compatible)
-search_url = f"{jira_url}/rest/api/2/search"
+# Jira API v3 endpoint - FIXED
+search_url = f"{jira_url}/rest/api/3/search"
 
 # Prepare authentication
 auth = HTTPBasicAuth(jira_email, jira_api_token)
