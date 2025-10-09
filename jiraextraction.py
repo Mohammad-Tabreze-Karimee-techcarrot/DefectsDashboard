@@ -45,10 +45,10 @@ else:
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
-# ✅ FIXED: Use the NEW /rest/api/3/search/jql endpoint (not /search)
-search_url = f"{jira_url}/rest/api/3/search/jql"
+# Use standard Jira API v3 search endpoint
+search_url = f"{jira_url}/rest/api/3/search"
 
-# Prepare request headers for POST
+# Prepare request headers
 headers = {
     "Accept": "application/json",
     "Content-Type": "application/json"
@@ -61,18 +61,25 @@ start_at = 0
 max_results = 100
 all_issues = []
 
-# ✅ FIXED: Use POST method with JSON body (not GET with params)
+# Fetch all issues with POST method
 while True:
+    # Correct payload structure for Jira API v3
     payload = {
-        'jql': jql_query,
-        'startAt': start_at,
-        'maxResults': max_results,
-        'fields': ['summary', 'status', 'assignee', 'priority', 'created', 'updated', 'issuetype', 'labels']
+        "jql": jql_query,
+        "startAt": start_at,
+        "maxResults": max_results,
+        "fields": ["*all"]  # Get all fields to handle custom field names
     }
     
     try:
         # POST request with JSON body
-        response = requests.post(search_url, headers=headers, auth=auth, data=json.dumps(payload), timeout=30)
+        response = requests.post(
+            search_url, 
+            headers=headers, 
+            auth=auth, 
+            data=json.dumps(payload), 
+            timeout=30
+        )
         
         if response.status_code != 200:
             print(f"❌ Error fetching issues: {response.status_code} - {response.text}")
@@ -122,39 +129,74 @@ sheet = wb.active
 sheet.title = "Jira Defects"
 sheet.append(["ID", "Work Item Type", "Title", "State", "Original Jira State", "Assigned To", "Tags", "Severity", "Issue Links"])
 
-# Process each issue
+# Process each issue with flexible field mapping
 for idx, issue in enumerate(all_issues, start=2):
     issue_key = issue.get('key', '')
     fields = issue.get('fields', {})
     
-    # Extract fields
-    issue_type = fields.get('issuetype', {}).get('name', 'Bug')
-    summary = fields.get('summary', '')
+    # Extract issue type - try different field names
+    issue_type_obj = fields.get('issuetype') or fields.get('Type') or fields.get('type')
+    if isinstance(issue_type_obj, dict):
+        issue_type = issue_type_obj.get('name', 'Bug')
+    else:
+        issue_type = str(issue_type_obj) if issue_type_obj else 'Bug'
     
-    # Status - Get original and map
-    jira_status = fields.get('status', {}).get('name', 'Unknown')
+    # Extract title/summary - try multiple field names (Work, summary, etc.)
+    title = (
+        fields.get('Work') or 
+        fields.get('work') or 
+        fields.get('summary') or 
+        fields.get('Summary') or 
+        issue_key
+    )
+    if isinstance(title, dict):
+        title = title.get('content', '') or str(title)
+    
+    # Status - flexible extraction
+    status_obj = fields.get('status') or fields.get('Status')
+    if isinstance(status_obj, dict):
+        jira_status = status_obj.get('name', 'Unknown')
+    else:
+        jira_status = str(status_obj) if status_obj else 'Unknown'
+    
     mapped_state = STATE_MAPPING.get(jira_status, jira_status)
     
-    # Assignee
-    assignee = fields.get('assignee', {})
-    assignee_name = assignee.get('displayName', '') if assignee else 'Unassigned'
+    # Assignee - flexible extraction
+    assignee_obj = fields.get('assignee') or fields.get('Assignee')
+    if isinstance(assignee_obj, dict):
+        assignee_name = (
+            assignee_obj.get('displayName') or 
+            assignee_obj.get('name') or 
+            assignee_obj.get('emailAddress', '').split('@')[0] or
+            'Unassigned'
+        )
+    else:
+        assignee_name = str(assignee_obj) if assignee_obj else 'Unassigned'
     
-    # Priority (map to Severity)
-    priority = fields.get('priority', {})
-    priority_name = priority.get('name', 'Medium') if priority else 'Medium'
+    # Priority - flexible extraction
+    priority_obj = fields.get('priority') or fields.get('Priority')
+    if isinstance(priority_obj, dict):
+        priority_name = priority_obj.get('name', 'Medium')
+    else:
+        priority_name = str(priority_obj) if priority_obj else 'Medium'
     
+    # Map Jira priority to DevOps-style severity
     severity_map = {
         'Highest': '1 - Critical',
         'High': '2 - High',
         'Medium': '3 - Medium',
         'Low': '4 - Low',
-        'Lowest': '5 - Suggestion'
+        'Lowest': '5 - Suggestion',
+        'Critical': '1 - Critical'
     }
     severity = severity_map.get(priority_name, f'3 - {priority_name}')
     
     # Labels/Tags
-    labels = fields.get('labels', [])
-    tags = ', '.join(labels) if labels else ''
+    labels_obj = fields.get('labels') or fields.get('Labels') or []
+    if isinstance(labels_obj, list):
+        tags = ', '.join(str(label) for label in labels_obj)
+    else:
+        tags = str(labels_obj) if labels_obj else ''
     
     # Issue URL
     issue_url = f"{jira_url}/browse/{issue_key}"
@@ -162,7 +204,7 @@ for idx, issue in enumerate(all_issues, start=2):
     # Write to Excel
     sheet.cell(row=idx, column=1, value=issue_key)
     sheet.cell(row=idx, column=2, value=issue_type)
-    sheet.cell(row=idx, column=3, value=summary)
+    sheet.cell(row=idx, column=3, value=str(title))
     sheet.cell(row=idx, column=4, value=mapped_state)
     sheet.cell(row=idx, column=5, value=jira_status)
     sheet.cell(row=idx, column=6, value=assignee_name)
