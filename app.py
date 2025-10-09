@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import glob
+import json
 
 # Paths and data
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -126,7 +127,7 @@ app.layout = dhtml.Div([
     dcc.Store(id='collapsed-state', data={}),
     
     dhtml.Div([
-        dhtml.H1("Multi-Project Defects Dashboard", 
+        dhtml.H1("Projects Defects Dashboard", 
                 style={"textAlign": "center", "color": "#2c3e50", "marginBottom": "10px",
                        "fontFamily": "Arial, sans-serif", "fontWeight": "bold"}),
         dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#7f8c8d", 
@@ -183,12 +184,10 @@ def update_data_store(n, selected_project):
     [Input('data-store', 'data'),
      Input("pie-chart", "clickData"),
      Input("bar-chart-state", "clickData"),
-     Input("bar-chart-severity", "clickData"),
-     Input({'type': 'assignee-toggle', 'index': ALL}, 'n_clicks')],
-    [State("scroll-trigger", "data"),
-     State('collapsed-state', 'data')]
+     Input("bar-chart-severity", "clickData")],
+    [State("scroll-trigger", "data")]
 )
-def update_all(json_data, pie_click, bar_state_click, bar_severity_click, toggle_clicks, scroll_count, collapsed_state):
+def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count):
     if not json_data:
         return None, {}, {}, {}, None, "", scroll_count
     
@@ -399,17 +398,20 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, toggle
                 
                 defect_items.append(defect_item)
             
+            # Create unique ID for this assignee using index
+            assignee_id = f"assignee-{assignee_display.replace(' ', '-').replace('@', '-at-')}"
+            
             # Assignee header (collapsible)
             assignee_section = dhtml.Div([
                 dhtml.Button([
-                    dhtml.Span("▼ " if collapsed_state.get(assignee_display, False) else "▶ ", 
+                    dhtml.Span("▶ ", 
                               style={"marginRight": "10px", "fontSize": "14px"}),
                     dhtml.Span(f"{assignee_display}", 
                               style={"fontWeight": "bold", "fontSize": "18px", "color": "#2c3e50"}),
                     dhtml.Span(f" ({defect_count} defect{'s' if defect_count != 1 else ''})", 
                               style={"marginLeft": "10px", "fontSize": "14px", "color": "#6c757d"})
                 ], 
-                id={'type': 'assignee-toggle', 'index': assignee_display},
+                id={'type': 'assignee-toggle', 'index': assignee_id},
                 n_clicks=0,
                 style={
                     "width": "100%",
@@ -427,9 +429,9 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, toggle
                 
                 dhtml.Div(
                     defect_items,
-                    id={'type': 'assignee-content', 'index': assignee_display},
+                    id={'type': 'assignee-content', 'index': assignee_id},
                     style={
-                        "display": "block" if collapsed_state.get(assignee_display, False) else "none",
+                        "display": "none",
                         "padding": "10px 0",
                         "marginBottom": "20px"
                     }
