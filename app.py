@@ -494,21 +494,24 @@ app.clientside_callback(
     prevent_initial_call=True
 )
 
-# Scroll callback
+# Scroll callback - FIXED
 app.clientside_callback(
     """
     function(scroll_trigger) {
-        if (scroll_trigger > 0) {
-            const element = document.getElementById('defects-section');
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
+        if (scroll_trigger && scroll_trigger > 0) {
+            setTimeout(function() {
+                const element = document.getElementById('defects-section');
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 200);
         }
-        return '';
+        return {display: 'none'};
     }
     """,
     Output('scroll-output', 'style'),
-    Input('scroll-trigger', 'data')
+    Input('scroll-trigger', 'data'),
+    prevent_initial_call=True
 )
 
 if __name__ == "__main__":
