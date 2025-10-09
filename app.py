@@ -626,7 +626,8 @@ clientside_callback(
     Output('scroll-output', 'style', allow_duplicate=True), # Dummy output
     [Input('data-store', 'data'),
      Input('collapse-trigger', 'data')],
-    prevent_initial_call=False
+    # ⬇️ FIX: CHANGED TO TRUE to resolve DuplicateCallback error
+    prevent_initial_call=True 
 )
 
 # 3. Scroll to Defects Section on Chart Click
