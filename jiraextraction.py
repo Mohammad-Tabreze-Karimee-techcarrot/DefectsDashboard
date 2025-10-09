@@ -4,15 +4,16 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 import os
 import time
+import json
 
 # Jira Configuration
-jira_url = os.getenv("JIRA_URL", "https://your-domain.atlassian.net")
+jira_url = os.getenv("JIRA_URL", "https://techcarrot-team-aqqopo6gxdmd.atlassian.net")
 jira_email = os.getenv("JIRA_EMAIL")
 jira_api_token = os.getenv("JIRA_API_TOKEN")
 jira_project_key = os.getenv("JIRA_PROJECT_KEY", "PROJ")
-jira_label_filter = os.getenv("JIRA_LABEL_FILTER", "")  # NEW: Label filter for build versions
+jira_label_filter = os.getenv("JIRA_LABEL_FILTER", "")
 
-# State mapping from Jira to Azure DevOps - UPDATED
+# State mapping from Jira to Azure DevOps
 STATE_MAPPING = {
     "Open": "New",
     "New": "New",
@@ -28,7 +29,7 @@ STATE_MAPPING = {
 print("🔄 Starting Jira defects extraction...")
 start_time = time.time()
 
-# JQL query - UPDATED to include label filter if provided
+# JQL query with label filter
 if jira_label_filter:
     if ' ' in jira_project_key:
         jql_query = f'project = "{jira_project_key}" AND type = Bug AND labels = "{jira_label_filter}" ORDER BY created DESC'
@@ -44,10 +45,15 @@ else:
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
-# CRITICAL FIX: Using API v3 endpoint instead of deprecated v2
-search_url = f"{jira_url}/rest/api/3/search"
+# ✅ FIXED: Use the NEW /rest/api/3/search/jql endpoint (not /search)
+search_url = f"{jira_url}/rest/api/3/search/jql"
 
-# Prepare authentication
+# Prepare request headers for POST
+headers = {
+    "Accept": "application/json",
+    "Content-Type": "application/json"
+}
+
 auth = HTTPBasicAuth(jira_email, jira_api_token)
 
 # Pagination parameters
@@ -55,18 +61,18 @@ start_at = 0
 max_results = 100
 all_issues = []
 
-# Fetch all issues (handle pagination) - Using GET method
+# ✅ FIXED: Use POST method with JSON body (not GET with params)
 while True:
-    # Query parameters for GET request
-    params = {
+    payload = {
         'jql': jql_query,
         'startAt': start_at,
         'maxResults': max_results,
-        'fields': 'summary,status,assignee,priority,created,updated'
+        'fields': ['summary', 'status', 'assignee', 'priority', 'created', 'updated', 'issuetype', 'labels']
     }
     
     try:
-        response = requests.get(search_url, params=params, auth=auth, timeout=30)
+        # POST request with JSON body
+        response = requests.post(search_url, headers=headers, auth=auth, data=json.dumps(payload), timeout=30)
         
         if response.status_code != 200:
             print(f"❌ Error fetching issues: {response.status_code} - {response.text}")
@@ -79,7 +85,6 @@ while True:
         total = data.get('total', 0)
         print(f"   Fetched {len(all_issues)}/{total} issues...")
         
-        # Check if we've fetched all issues
         if len(all_issues) >= total:
             break
         
@@ -94,7 +99,7 @@ while True:
 
 if not all_issues:
     print("⚠️ No issues found.")
-    # Create empty Excel file to avoid errors
+    # Create empty Excel file
     wb = openpyxl.Workbook()
     sheet = wb.active
     sheet.title = "Jira Defects"
@@ -123,34 +128,21 @@ for idx, issue in enumerate(all_issues, start=2):
     fields = issue.get('fields', {})
     
     # Extract fields
-    issue_type = "Bug"  # Default to Bug since issuetype is not available
+    issue_type = fields.get('issuetype', {}).get('name', 'Bug')
+    summary = fields.get('summary', '')
     
-    # Title - Try summary field
-    title = fields.get('summary', '') or fields.get('work', '') or issue_key
-    
-    # Status - Get original and map to Azure DevOps state
-    status_field = fields.get('status', {})
-    jira_status = status_field.get('name', 'Unknown') if isinstance(status_field, dict) else str(status_field)
+    # Status - Get original and map
+    jira_status = fields.get('status', {}).get('name', 'Unknown')
     mapped_state = STATE_MAPPING.get(jira_status, jira_status)
     
     # Assignee
     assignee = fields.get('assignee', {})
-    if isinstance(assignee, dict):
-        assignee_name = assignee.get('displayName', '') or assignee.get('name', '')
-    else:
-        assignee_name = str(assignee) if assignee else ''
-    
-    if not assignee_name:
-        assignee_name = 'Unassigned'
+    assignee_name = assignee.get('displayName', '') if assignee else 'Unassigned'
     
     # Priority (map to Severity)
     priority = fields.get('priority', {})
-    if isinstance(priority, dict):
-        priority_name = priority.get('name', 'Medium')
-    else:
-        priority_name = str(priority) if priority else 'Medium'
+    priority_name = priority.get('name', 'Medium') if priority else 'Medium'
     
-    # Map Jira priority to DevOps-style severity
     severity_map = {
         'Highest': '1 - Critical',
         'High': '2 - High',
@@ -160,8 +152,9 @@ for idx, issue in enumerate(all_issues, start=2):
     }
     severity = severity_map.get(priority_name, f'3 - {priority_name}')
     
-    # Tags - empty since labels are not available
-    tags = ''
+    # Labels/Tags
+    labels = fields.get('labels', [])
+    tags = ', '.join(labels) if labels else ''
     
     # Issue URL
     issue_url = f"{jira_url}/browse/{issue_key}"
@@ -169,7 +162,7 @@ for idx, issue in enumerate(all_issues, start=2):
     # Write to Excel
     sheet.cell(row=idx, column=1, value=issue_key)
     sheet.cell(row=idx, column=2, value=issue_type)
-    sheet.cell(row=idx, column=3, value=title)
+    sheet.cell(row=idx, column=3, value=summary)
     sheet.cell(row=idx, column=4, value=mapped_state)
     sheet.cell(row=idx, column=5, value=jira_status)
     sheet.cell(row=idx, column=6, value=assignee_name)
