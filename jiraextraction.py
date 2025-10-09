@@ -4,7 +4,6 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 import os
 import time
-import json
 
 # Jira Configuration
 jira_url = os.getenv("JIRA_URL", "https://techcarrot-team-aqqopo6gxdmd.atlassian.net")
@@ -45,14 +44,8 @@ else:
 print(f"📋 Fetching issues from Jira project: {jira_project_key}")
 print(f"🔍 JQL Query: {jql_query}")
 
-# Use standard Jira API v3 search endpoint
+# Use standard Jira API v3 search endpoint with GET method
 search_url = f"{jira_url}/rest/api/3/search"
-
-# Prepare request headers
-headers = {
-    "Accept": "application/json",
-    "Content-Type": "application/json"
-}
 
 auth = HTTPBasicAuth(jira_email, jira_api_token)
 
@@ -61,23 +54,21 @@ start_at = 0
 max_results = 100
 all_issues = []
 
-# Fetch all issues with POST method
+# Fetch all issues with GET method and query parameters
 while True:
-    # Correct payload structure for Jira API v3
-    payload = {
+    params = {
         "jql": jql_query,
         "startAt": start_at,
         "maxResults": max_results,
-        "fields": ["*all"]  # Get all fields to handle custom field names
+        "fields": "*all"
     }
     
     try:
-        # POST request with JSON body
-        response = requests.post(
+        # GET request with query parameters (proper Jira v3 API usage)
+        response = requests.get(
             search_url, 
-            headers=headers, 
+            params=params,
             auth=auth, 
-            data=json.dumps(payload), 
             timeout=30
         )
         
