@@ -500,7 +500,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                 id=f"toggle-{assignee_id}",
                 n_clicks=0,
                 style={
-                    "width": "100%",
+                    "width": "calc(100% - 4px)",
                     "padding": "10px 15px", # Reduced padding
                     "backgroundColor": "#ffffff",
                     "border": "1px solid #1976D2",
@@ -512,7 +512,8 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                     "boxShadow": "0 2px 5px rgba(0,0,0,0.1)",
                     "transition": "all 0.3s ease",
                     "display": "flex", # Added for alignment
-                    "alignItems": "center" # Added for alignment
+                    "alignItems": "center", # Added for alignment
+                    "boxSizing": "border-box"
                 }),
                 
                 dhtml.Div(
