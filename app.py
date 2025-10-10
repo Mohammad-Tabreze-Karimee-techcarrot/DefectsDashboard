@@ -164,7 +164,7 @@ app.layout = dhtml.Div([
             id="defects-section",
             style={"marginTop": "30px", "marginLeft": "20px", "color": "#1C2833",
                    "fontFamily": "Segoe UI, Arial, sans-serif", "fontWeight": "600"}),
-    dhtml.Div(id="links-container", style={"marginTop": "20px", "padding": "0 20px"}),
+    dhtml.Div(id="links-container", style={"marginTop": "20px", "padding": "0 20px", "maxWidth": "100%", "boxSizing": "border-box"}),
     
     # Hidden components for callbacks
     dhtml.Div(id='scroll-output', style={'display': 'none'}),
@@ -500,7 +500,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                 id=f"toggle-{assignee_id}",
                 n_clicks=0,
                 style={
-                    "width": "100%",
+                    "width": "calc(100% - 4px)",
                     "padding": "10px 15px", # Reduced padding
                     "backgroundColor": "#ffffff",
                     "border": "1px solid #1976D2",
@@ -512,7 +512,8 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                     "boxShadow": "0 2px 5px rgba(0,0,0,0.1)",
                     "transition": "all 0.3s ease",
                     "display": "flex", # Added for alignment
-                    "alignItems": "center" # Added for alignment
+                    "alignItems": "center", # Added for alignment
+                    "boxSizing": "border-box"
                 }),
                 
                 dhtml.Div(
@@ -524,11 +525,11 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                         "marginBottom": "10px"
                     }
                 )
-            ], id=assignee_id, style={"marginBottom": "8px"})
+            ], id=assignee_id, style={"marginBottom": "8px", "maxWidth": "100%", "boxSizing": "border-box"})
             
             assignee_sections.append(assignee_section)
         
-        links_container = dhtml.Div(assignee_sections)
+        links_container = dhtml.Div(assignee_sections, style={"maxWidth": "100%", "overflow": "hidden"})
     
     last_updated = f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     
@@ -626,7 +627,6 @@ clientside_callback(
     Output('scroll-output', 'style', allow_duplicate=True), # Dummy output
     [Input('data-store', 'data'),
      Input('collapse-trigger', 'data')],
-    # ⬇️ FIX: CHANGED TO TRUE to resolve DuplicateCallback error
     prevent_initial_call=True 
 )
 
