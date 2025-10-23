@@ -15,7 +15,7 @@ JIRA_PROJECT_KEY="Emirates Transport" JIRA_LABEL_FILTER="Gitex-2025" python jira
 
 # Run Jira extraction for RAM Ji Website Req V2
 echo "📥 Extracting defects from Jira (RAM Ji Website Req V2)..."
-JIRA_PROJECT_KEY="DRW" JIRA_LABEL_FILTER="Dr._Ram_Ji_Website_Requirements_V2" python jiraextraction.py
+JIRA_PROJECT_KEY="Doctor_Ramji_Website" JIRA_LABEL_FILTER="Dr._Ram_Ji_Website_Requirements_V2" python jiraextraction.py
 
 echo "✅ All extractions completed"
 echo "🌐 Starting dashboard server..."
