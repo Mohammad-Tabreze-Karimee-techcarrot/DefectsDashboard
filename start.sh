@@ -5,6 +5,10 @@ echo "🚀 Starting deployment process..."
 echo "📥 Extracting defects from Azure DevOps..."
 python defectsextraction.py
 
+# Run Jira extraction for RAM Ji Website Req V2
+echo "📥 Extracting defects from Jira (RAM Ji Website Req V2)..."
+JIRA_PROJECT_KEY="Doctor_Ramji_Website" JIRA_LABEL_FILTER="Dr._Ram_Ji_Website_Requirements_V2" python jiraextraction.py
+
 # Run Jira extraction for techcarrot Time Sheet
 echo "📥 Extracting defects from Jira (techcarrot Time Sheet)..."
 JIRA_PROJECT_KEY="techcarrot Time Sheet" JIRA_LABEL_FILTER="techcarrot-timesheet-build1" python jiraextraction.py
