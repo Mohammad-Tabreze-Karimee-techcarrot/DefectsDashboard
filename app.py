@@ -20,7 +20,7 @@ PROJECTS = {
     "Smart FM Replacement (DevOps)": "Smart FM Defects through Python.xlsx",
     "Timesheet (Jira)": "Jira techcarrot Time Sheet Defects.xlsx",
     "Emirates Transport (Jira)": "Jira Emirates Transport Defects.xlsx",
-    "RAM Ji Website Req V2 (Jira)": "Jira RAM Ji Website Defects.xlsx",
+    "Dr. RAM Ji Website Req V2 (Jira)": "Jira RAM Ji Website Defects.xlsx",
 }
 
 def load_data(project_name):
