@@ -16,7 +16,7 @@ jira_label_filter = os.getenv("JIRA_LABEL_FILTER", "")
 STATE_MAPPING = {
     "Open": "New",
     "New": "New",
-    "To Do": "Reopen",
+    "To Do": "New",
     "Reopen": "Reopen",
     "In Progress": "New",
     "In Development": "New",
