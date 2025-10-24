@@ -119,6 +119,28 @@ if not all_issues:
 
 print(f"✅ Found {len(all_issues)} issues. Processing...")
 
+# DEBUG: Show all fields from first issue to find Severity field
+if all_issues:
+    first_issue = all_issues[0]
+    print("\n🔍 DEBUG: Checking fields in first issue to locate Severity field...")
+    fields = first_issue.get('fields', {})
+    
+    # Look for any field containing 'severity' or starting with 'customfield'
+    severity_candidates = []
+    for field_name, field_value in fields.items():
+        if 'severity' in field_name.lower():
+            severity_candidates.append((field_name, field_value))
+            print(f"   Found: {field_name} = {field_value}")
+    
+    if not severity_candidates:
+        print("   ⚠️ No 'Severity' field found. Checking custom fields...")
+        # Show sample of custom fields
+        for field_name, field_value in list(fields.items())[:5]:
+            if field_name.startswith('customfield'):
+                print(f"   {field_name} = {field_value}")
+    
+    print()
+
 # Create Excel
 wb = openpyxl.Workbook()
 sheet = wb.active
@@ -137,7 +159,7 @@ for idx, issue in enumerate(all_issues, start=2):
     else:
         issue_type = str(issue_type_obj) if issue_type_obj else 'Bug'
     
-    # Extract title/summary - try multiple field names (Work, summary, etc.)
+    # Extract title/summary - try multiple field names
     title = (
         fields.get('Work') or 
         fields.get('work') or 
@@ -169,76 +191,74 @@ for idx, issue in enumerate(all_issues, start=2):
     else:
         assignee_name = str(assignee_obj) if assignee_obj else 'Unassigned'
     
-    # ===== SEVERITY EXTRACTION (Priority as fallback) =====
-    # Step 1: Try to get Severity field directly from Jira
-    severity_obj = (
-        fields.get('customfield_10010') or 
-        fields.get('customfield_10020') or 
-        fields.get('Severity') or 
-        fields.get('severity')
-    )
+    # ===== SEVERITY EXTRACTION =====
+    # Try multiple possible field names for Severity
+    severity_obj = None
+    severity_field_names = [
+        'customfield_10010',  # Common custom field IDs
+        'customfield_10020',
+        'customfield_10030',
+        'customfield_10040',
+        'customfield_10050',
+        'Severity',
+        'severity',
+        'SEVERITY'
+    ]
+    
+    # Try each field name
+    for field_name in severity_field_names:
+        severity_obj = fields.get(field_name)
+        if severity_obj:
+            break
     
     if severity_obj:
-        # Severity field exists - use it directly
+        # Extract severity value
         if isinstance(severity_obj, dict):
-            severity_value = severity_obj.get('value') or severity_obj.get('name', 'Medium')
+            severity_value = (
+                severity_obj.get('value') or 
+                severity_obj.get('name') or 
+                severity_obj.get('displayName') or
+                'Medium'
+            )
+        elif isinstance(severity_obj, str):
+            severity_value = severity_obj
         else:
             severity_value = str(severity_obj) if severity_obj else 'Medium'
         
-        # Normalize severity values to match dashboard expectations
+        # Normalize severity values to DevOps format
         severity_normalize_map = {
             'Critical': '1 - Critical',
             'Blocker': '1 - Critical',
+            'critical': '1 - Critical',
             'High': '2 - High',
             'Major': '2 - High',
+            'high': '2 - High',
             'Medium': '3 - Medium',
             'Moderate': '3 - Medium',
+            'medium': '3 - Medium',
             'Low': '4 - Low',
             'Minor': '4 - Low',
+            'low': '4 - Low',
             'Trivial': '5 - Suggestion',
             'Suggestion': '5 - Suggestion',
             'Lowest': '5 - Suggestion',
-            'Cosmetic': '5 - Suggestion'
+            'Cosmetic': '5 - Suggestion',
+            'trivial': '5 - Suggestion',
+            'suggestion': '5 - Suggestion'
         }
         
-        # Try exact match first, then case-insensitive
-        severity = severity_normalize_map.get(severity_value)
-        if not severity:
-            severity = severity_normalize_map.get(severity_value.capitalize(), f'3 - {severity_value}')
+        # Get normalized severity
+        severity = severity_normalize_map.get(severity_value, f'3 - {severity_value}')
         
-        if idx <= 5:  # Debug first 5 issues
-            print(f"   Issue {issue_key}: Using Severity field = '{severity_value}' → '{severity}'")
+        # Debug first 5 issues
+        if idx <= 6:
+            print(f"   Issue {issue_key}: Severity = '{severity_value}' → '{severity}'")
     
     else:
-        # Step 2: Severity not found - fallback to Priority
-        priority_obj = fields.get('priority') or fields.get('Priority')
-        
-        if isinstance(priority_obj, dict):
-            priority_name = priority_obj.get('name', 'Medium')
-        else:
-            priority_name = str(priority_obj) if priority_obj else 'Medium'
-        
-        # Map Jira priority to severity
-        priority_to_severity_map = {
-            'Highest': '1 - Critical',
-            'Critical': '1 - Critical',
-            'Blocker': '1 - Critical',
-            'High': '2 - High',
-            'Major': '2 - High',
-            'Medium': '3 - Medium',
-            'Moderate': '3 - Medium',
-            'Low': '4 - Low',
-            'Minor': '4 - Low',
-            'Trivial': '5 - Suggestion',
-            'Lowest': '5 - Suggestion',
-            'Suggestion': '5 - Suggestion',
-            'Cosmetic': '5 - Suggestion'
-        }
-        
-        severity = priority_to_severity_map.get(priority_name, f'3 - {priority_name}')
-        
-        if idx <= 5:  # Debug first 5 issues
-            print(f"   Issue {issue_key}: Using Priority field = '{priority_name}' → Severity '{severity}'")
+        # No Severity field found - use default
+        severity = '3 - Medium'
+        if idx <= 6:
+            print(f"   Issue {issue_key}: ⚠️ No Severity field found, using default '{severity}'")
     
     # Labels/Tags
     labels_obj = fields.get('labels') or fields.get('Labels') or []
