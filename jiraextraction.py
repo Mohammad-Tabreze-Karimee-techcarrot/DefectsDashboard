@@ -92,7 +92,7 @@ print("\n🔍 Detecting 'Severity' field key from first issue...")
 first_fields = all_issues[0].get("fields", {})
 severity_field_key = None
 for key, value in first_fields.items():
-    if "severity" in key.lower():
+    if "Severity" in key.lower():
         severity_field_key = key
         print(f"✅ Found Severity field key: {key}")
         break
