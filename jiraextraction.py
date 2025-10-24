@@ -169,23 +169,76 @@ for idx, issue in enumerate(all_issues, start=2):
     else:
         assignee_name = str(assignee_obj) if assignee_obj else 'Unassigned'
     
-    # Priority - flexible extraction
-    priority_obj = fields.get('priority') or fields.get('Priority')
-    if isinstance(priority_obj, dict):
-        priority_name = priority_obj.get('name', 'Medium')
-    else:
-        priority_name = str(priority_obj) if priority_obj else 'Medium'
+    # ===== SEVERITY EXTRACTION (Priority as fallback) =====
+    # Step 1: Try to get Severity field directly from Jira
+    severity_obj = (
+        fields.get('customfield_10010') or 
+        fields.get('customfield_10020') or 
+        fields.get('Severity') or 
+        fields.get('severity')
+    )
     
-    # Map Jira priority to DevOps-style severity
-    severity_map = {
-        'Highest': '1 - Critical',
-        'High': '2 - High',
-        'Medium': '3 - Medium',
-        'Minor': '4 - Low',
-        'Cosmetic': '5 - Suggestion',
-        'Cosmetic': '6 - Change'
-    }
-    severity = severity_map.get(priority_name, f'3 - {priority_name}')
+    if severity_obj:
+        # Severity field exists - use it directly
+        if isinstance(severity_obj, dict):
+            severity_value = severity_obj.get('value') or severity_obj.get('name', 'Medium')
+        else:
+            severity_value = str(severity_obj) if severity_obj else 'Medium'
+        
+        # Normalize severity values to match dashboard expectations
+        severity_normalize_map = {
+            'Critical': '1 - Critical',
+            'Blocker': '1 - Critical',
+            'High': '2 - High',
+            'Major': '2 - High',
+            'Medium': '3 - Medium',
+            'Moderate': '3 - Medium',
+            'Low': '4 - Low',
+            'Minor': '4 - Low',
+            'Trivial': '5 - Suggestion',
+            'Suggestion': '5 - Suggestion',
+            'Lowest': '5 - Suggestion',
+            'Cosmetic': '5 - Suggestion'
+        }
+        
+        # Try exact match first, then case-insensitive
+        severity = severity_normalize_map.get(severity_value)
+        if not severity:
+            severity = severity_normalize_map.get(severity_value.capitalize(), f'3 - {severity_value}')
+        
+        if idx <= 5:  # Debug first 5 issues
+            print(f"   Issue {issue_key}: Using Severity field = '{severity_value}' → '{severity}'")
+    
+    else:
+        # Step 2: Severity not found - fallback to Priority
+        priority_obj = fields.get('priority') or fields.get('Priority')
+        
+        if isinstance(priority_obj, dict):
+            priority_name = priority_obj.get('name', 'Medium')
+        else:
+            priority_name = str(priority_obj) if priority_obj else 'Medium'
+        
+        # Map Jira priority to severity
+        priority_to_severity_map = {
+            'Highest': '1 - Critical',
+            'Critical': '1 - Critical',
+            'Blocker': '1 - Critical',
+            'High': '2 - High',
+            'Major': '2 - High',
+            'Medium': '3 - Medium',
+            'Moderate': '3 - Medium',
+            'Low': '4 - Low',
+            'Minor': '4 - Low',
+            'Trivial': '5 - Suggestion',
+            'Lowest': '5 - Suggestion',
+            'Suggestion': '5 - Suggestion',
+            'Cosmetic': '5 - Suggestion'
+        }
+        
+        severity = priority_to_severity_map.get(priority_name, f'3 - {priority_name}')
+        
+        if idx <= 5:  # Debug first 5 issues
+            print(f"   Issue {issue_key}: Using Priority field = '{priority_name}' → Severity '{severity}'")
     
     # Labels/Tags
     labels_obj = fields.get('labels') or fields.get('Labels') or []
