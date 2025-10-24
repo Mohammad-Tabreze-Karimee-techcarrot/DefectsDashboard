@@ -87,30 +87,33 @@ if not all_issues:
 
 print(f"✅ Found {len(all_issues)} issues. Processing...")
 
-# 🔍 DEBUG: Print all field names in Jira
-print("\n🔍 Listing all available fields for debugging Severity...")
-fields_url = f"{jira_url}/rest/api/3/field"
-fields_response = requests.get(fields_url, auth=auth)
-if fields_response.status_code == 200:
-    for f in fields_response.json():
-        if "severity" in f["name"].lower() or "severity" in f["id"].lower():
-            print(f"🧭 Field Found: {f['name']} → {f['id']}")
-else:
-    print(f"❌ Error fetching fields: {fields_response.status_code} - {fields_response.text}")
-
-
-# Detect actual Severity field key
-print("\n🔍 Detecting 'Severity' field key from first issue...")
+# 🔍 DEBUG: Show ALL fields from first issue to find Severity
+print("\n🔍 DEBUG: Analyzing first issue fields to locate Severity...")
 first_fields = all_issues[0].get("fields", {})
 severity_field_key = None
-for key, value in first_fields.items():
-    if "Severity" in key.lower():
-        severity_field_key = key
-        print(f"✅ Found Severity field key: {key}")
-        break
+
+print("📋 All fields in first issue:")
+for key, value in sorted(first_fields.items()):
+    # Show fields that might be Severity
+    if any(keyword in key.lower() for keyword in ['severity', 'priority', 'custom']):
+        value_display = str(value)[:100] if value else "None"
+        print(f"   {key} = {value_display}")
+        
+        # Try to detect Severity field
+        if 'severity' in key.lower():
+            severity_field_key = key
+            print(f"   ✅ DETECTED SEVERITY FIELD: {key}")
 
 if not severity_field_key:
-    print("⚠️ Could not auto-detect Severity field. Will use default 'Severity' key.")
+    print("   ⚠️ No field with 'severity' in name found")
+    print("   📌 Checking Priority field as alternative...")
+    # Check if Priority field exists
+    priority_obj = first_fields.get("priority")
+    if priority_obj:
+        print(f"   Found Priority field: {priority_obj}")
+        print("   ℹ️ Will use Priority as fallback for Severity")
+
+print()
 
 # Create Excel
 wb = openpyxl.Workbook()
@@ -144,18 +147,59 @@ for idx, issue in enumerate(all_issues, start=2):
     else:
         assignee_name = "Unassigned"
 
-    # === Severity Extraction ===
-    severity_obj = fields.get("Severity") or fields.get(severity_field_key)
-    if isinstance(severity_obj, dict):
-        severity_value = severity_obj.get("value") or severity_obj.get("name") or "Medium"
-    elif isinstance(severity_obj, str):
-        severity_value = severity_obj
-    else:
-        severity_value = "Medium"
-
+    # === Severity Extraction with Multiple Attempts ===
+    severity_value = None
+    
+    # Attempt 1: Use detected Severity field key
+    if severity_field_key:
+        severity_obj = fields.get(severity_field_key)
+        if severity_obj:
+            if isinstance(severity_obj, dict):
+                severity_value = severity_obj.get("value") or severity_obj.get("name")
+            elif isinstance(severity_obj, str):
+                severity_value = severity_obj
+    
+    # Attempt 2: Check common Severity field names
+    if not severity_value:
+        for field_name in ["Severity", "severity", "SEVERITY"]:
+            severity_obj = fields.get(field_name)
+            if severity_obj:
+                if isinstance(severity_obj, dict):
+                    severity_value = severity_obj.get("value") or severity_obj.get("name")
+                elif isinstance(severity_obj, str):
+                    severity_value = severity_obj
+                break
+    
+    # Attempt 3: Check common custom field IDs
+    if not severity_value:
+        for cf_id in range(10000, 10100):  # Check customfield_10000 to customfield_10099
+            cf_key = f"customfield_{cf_id}"
+            severity_obj = fields.get(cf_key)
+            if severity_obj:
+                if isinstance(severity_obj, dict):
+                    field_name = severity_obj.get("name", "").lower()
+                    if "severity" in field_name:
+                        severity_value = severity_obj.get("value") or severity_obj.get("name")
+                        if idx <= 3:
+                            print(f"   ℹ️ Issue {issue_key}: Found Severity in {cf_key}")
+                        break
+    
+    # Attempt 4: Fallback to Priority field
+    if not severity_value:
+        priority_obj = fields.get("priority")
+        if isinstance(priority_obj, dict):
+            priority_name = priority_obj.get("name", "Medium")
+            severity_value = priority_name
+            if idx <= 3:
+                print(f"   ℹ️ Issue {issue_key}: Using Priority '{priority_name}' as Severity fallback")
+        else:
+            severity_value = "Medium"
+    
+    # Map to DevOps format
     severity_map = {
         "Critical": "1 - Critical",
         "Blocker": "1 - Critical",
+        "Highest": "1 - Critical",
         "High": "2 - High",
         "Major": "2 - High",
         "Medium": "3 - Medium",
@@ -163,9 +207,20 @@ for idx, issue in enumerate(all_issues, start=2):
         "Low": "4 - Low",
         "Minor": "4 - Low",
         "Trivial": "5 - Suggestion",
-        "Suggestion": "5 - Suggestion"
+        "Lowest": "5 - Suggestion",
+        "Suggestion": "5 - Suggestion",
+        "Cosmetic": "5 - Suggestion"
     }
-    severity = severity_map.get(severity_value, f"3 - {severity_value}")
+    
+    # Case-insensitive lookup
+    severity = None
+    for key in severity_map:
+        if severity_value and key.lower() == str(severity_value).lower():
+            severity = severity_map[key]
+            break
+    
+    if not severity:
+        severity = f"3 - {severity_value}"
 
     if idx <= 6:
         print(f"   Issue {issue_key}: Severity = '{severity_value}' → '{severity}'")
@@ -194,5 +249,9 @@ os.makedirs(data_folder, exist_ok=True)
 save_path = os.path.join(data_folder, f"Jira {jira_project_key} Defects.xlsx")
 wb.save(save_path)
 
-print(f"✅ Excel file saved at: {save_path}")
+end_time = time.time()
+elapsed_time = round(end_time - start_time, 2)
+
+print(f"\n✅ Excel file saved at: {save_path}")
+print(f"⏱️ Total execution time: {elapsed_time} seconds")
 print(f"📊 Total defects extracted: {len(all_issues)}")
