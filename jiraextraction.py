@@ -87,33 +87,25 @@ if not all_issues:
 
 print(f"✅ Found {len(all_issues)} issues. Processing...")
 
-# 🔍 DEBUG: Show ALL fields from first issue to find Severity
-print("\n🔍 DEBUG: Analyzing first issue fields to locate Severity...")
-first_fields = all_issues[0].get("fields", {})
+# 🔍 Step 1: Detect 'Severity' field ID from Jira metadata
 severity_field_key = None
-
-print("📋 All fields in first issue:")
-for key, value in sorted(first_fields.items()):
-    # Show fields that might be Severity
-    if any(keyword in key.lower() for keyword in ['severity', 'priority', 'custom']):
-        value_display = str(value)[:100] if value else "None"
-        print(f"   {key} = {value_display}")
-        
-        # Try to detect Severity field
-        if 'severity' in key.lower():
-            severity_field_key = key
-            print(f"   ✅ DETECTED SEVERITY FIELD: {key}")
+fields_url = f"{jira_url}/rest/api/3/field"
+print("\n🔍 Checking Jira fields metadata for 'Severity' field...")
+try:
+    fields_resp = requests.get(fields_url, auth=auth)
+    if fields_resp.status_code == 200:
+        for f in fields_resp.json():
+            if "severity" in f["name"].lower():
+                severity_field_key = f["id"]
+                print(f"✅ Found Severity field: {f['name']} → {f['id']}")
+                break
+    else:
+        print(f"⚠️ Failed to fetch Jira fields metadata: {fields_resp.status_code}")
+except Exception as e:
+    print(f"⚠️ Error checking fields metadata: {str(e)}")
 
 if not severity_field_key:
-    print("   ⚠️ No field with 'severity' in name found")
-    print("   📌 Checking Priority field as alternative...")
-    # Check if Priority field exists
-    priority_obj = first_fields.get("priority")
-    if priority_obj:
-        print(f"   Found Priority field: {priority_obj}")
-        print("   ℹ️ Will use Priority as fallback for Severity")
-
-print()
+    print("⚠️ Could not detect Severity field in metadata, will check issue fields directly.")
 
 # Create Excel
 wb = openpyxl.Workbook()
@@ -147,55 +139,39 @@ for idx, issue in enumerate(all_issues, start=2):
     else:
         assignee_name = "Unassigned"
 
-    # === Severity Extraction with Multiple Attempts ===
+    # === Severity Extraction ===
     severity_value = None
-    
-    # Attempt 1: Use detected Severity field key
+
+    # Attempt 1: use detected Severity field ID from metadata
     if severity_field_key:
         severity_obj = fields.get(severity_field_key)
-        if severity_obj:
-            if isinstance(severity_obj, dict):
-                severity_value = severity_obj.get("value") or severity_obj.get("name")
-            elif isinstance(severity_obj, str):
-                severity_value = severity_obj
-    
-    # Attempt 2: Check common Severity field names
+        if isinstance(severity_obj, dict):
+            severity_value = severity_obj.get("value") or severity_obj.get("name")
+        elif isinstance(severity_obj, str):
+            severity_value = severity_obj
+
+    # Attempt 2: common Severity field names
     if not severity_value:
         for field_name in ["Severity", "severity", "SEVERITY"]:
-            severity_obj = fields.get(field_name)
-            if severity_obj:
-                if isinstance(severity_obj, dict):
-                    severity_value = severity_obj.get("value") or severity_obj.get("name")
-                elif isinstance(severity_obj, str):
-                    severity_value = severity_obj
+            val = fields.get(field_name)
+            if val:
+                if isinstance(val, dict):
+                    severity_value = val.get("value") or val.get("name")
+                elif isinstance(val, str):
+                    severity_value = val
                 break
-    
-    # Attempt 3: Check common custom field IDs
-    if not severity_value:
-        for cf_id in range(10000, 10100):  # Check customfield_10000 to customfield_10099
-            cf_key = f"customfield_{cf_id}"
-            severity_obj = fields.get(cf_key)
-            if severity_obj:
-                if isinstance(severity_obj, dict):
-                    field_name = severity_obj.get("name", "").lower()
-                    if "severity" in field_name:
-                        severity_value = severity_obj.get("value") or severity_obj.get("name")
-                        if idx <= 3:
-                            print(f"   ℹ️ Issue {issue_key}: Found Severity in {cf_key}")
-                        break
-    
-    # Attempt 4: Fallback to Priority field
+
+    # Attempt 3: Fallback to Priority (only if absolutely needed)
     if not severity_value:
         priority_obj = fields.get("priority")
         if isinstance(priority_obj, dict):
-            priority_name = priority_obj.get("name", "Medium")
-            severity_value = priority_name
+            severity_value = priority_obj.get("name", "Medium")
             if idx <= 3:
-                print(f"   ℹ️ Issue {issue_key}: Using Priority '{priority_name}' as Severity fallback")
+                print(f"   ℹ️ Issue {issue_key}: Using Priority '{severity_value}' as Severity fallback")
         else:
             severity_value = "Medium"
-    
-    # Map to DevOps format
+
+    # Normalize severity
     severity_map = {
         "Critical": "1 - Critical",
         "Blocker": "1 - Critical",
@@ -211,16 +187,7 @@ for idx, issue in enumerate(all_issues, start=2):
         "Suggestion": "5 - Suggestion",
         "Cosmetic": "5 - Suggestion"
     }
-    
-    # Case-insensitive lookup
-    severity = None
-    for key in severity_map:
-        if severity_value and key.lower() == str(severity_value).lower():
-            severity = severity_map[key]
-            break
-    
-    if not severity:
-        severity = f"3 - {severity_value}"
+    severity = severity_map.get(str(severity_value).capitalize(), f"3 - {severity_value}")
 
     if idx <= 6:
         print(f"   Issue {issue_key}: Severity = '{severity_value}' → '{severity}'")
@@ -231,7 +198,6 @@ for idx, issue in enumerate(all_issues, start=2):
 
     issue_url = f"{jira_url}/browse/{issue_key}"
 
-    # Write to Excel
     sheet.append([
         issue_key, issue_type, str(title),
         mapped_state, jira_status, assignee_name,
@@ -249,9 +215,7 @@ os.makedirs(data_folder, exist_ok=True)
 save_path = os.path.join(data_folder, f"Jira {jira_project_key} Defects.xlsx")
 wb.save(save_path)
 
-end_time = time.time()
-elapsed_time = round(end_time - start_time, 2)
-
+elapsed_time = round(time.time() - start_time, 2)
 print(f"\n✅ Excel file saved at: {save_path}")
 print(f"⏱️ Total execution time: {elapsed_time} seconds")
 print(f"📊 Total defects extracted: {len(all_issues)}")
