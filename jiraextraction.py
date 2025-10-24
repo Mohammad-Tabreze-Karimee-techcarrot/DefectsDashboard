@@ -181,9 +181,9 @@ for idx, issue in enumerate(all_issues, start=2):
         'Highest': '1 - Critical',
         'High': '2 - High',
         'Medium': '3 - Medium',
-        'Low': '4 - Low',
-        'Lowest': '5 - Suggestion',
-        'Critical': '1 - Critical'
+        'Minor': '4 - Low',
+        'Cosmetic': '5 - Suggestion',
+        'Cosmetic': '6 - Change'
     }
     severity = severity_map.get(priority_name, f'3 - {priority_name}')
     
