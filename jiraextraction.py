@@ -87,6 +87,18 @@ if not all_issues:
 
 print(f"✅ Found {len(all_issues)} issues. Processing...")
 
+# 🔍 DEBUG: Print all field names in Jira
+print("\n🔍 Listing all available fields for debugging Severity...")
+fields_url = f"{jira_url}/rest/api/3/field"
+fields_response = requests.get(fields_url, auth=auth)
+if fields_response.status_code == 200:
+    for f in fields_response.json():
+        if "severity" in f["name"].lower() or "severity" in f["id"].lower():
+            print(f"🧭 Field Found: {f['name']} → {f['id']}")
+else:
+    print(f"❌ Error fetching fields: {fields_response.status_code} - {fields_response.text}")
+
+
 # Detect actual Severity field key
 print("\n🔍 Detecting 'Severity' field key from first issue...")
 first_fields = all_issues[0].get("fields", {})
