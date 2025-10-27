@@ -17,9 +17,10 @@ data_folder = os.path.join(current_dir, "data")
 
 # Define your projects
 PROJECTS = {
-    "Smart FM (DevOps)": "Smart FM Defects through Python.xlsx",
+    "Smart FM Replacement (DevOps)": "Smart FM Defects through Python.xlsx",
     "Timesheet (Jira)": "Jira techcarrot Time Sheet Defects.xlsx",
     "Emirates Transport (Jira)": "Jira Emirates Transport Defects.xlsx",
+    "Dr. RAM Ji Website Req V2 (Jira)": "Jira Doctor_Ramji_Website Defects.xlsx",
 }
 
 def load_data(project_name):
@@ -267,7 +268,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                  "flexWrap": "wrap", "padding": "0 20px"})
     ])
     
-    # Chart generation logic remains the same (already small)
+    # Chart generation logic 
     
     # Pie Chart
     if severity_counts["Count"].sum() == 0:
