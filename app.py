@@ -196,7 +196,7 @@ def update_data_store(n, selected_project):
      Input("bar-chart-state", "clickData"),
      Input("bar-chart-severity", "clickData")],
     [State("scroll-trigger", "data"),
-     State("collapse-trigger", "data")
+     State("collapse-trigger", "data"),
      State("filter-state", "data")]
 )
 def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count, collapse_count, filter_state):
