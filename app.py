@@ -19,7 +19,7 @@ data_folder = os.path.join(current_dir, "data")
 PROJECTS = {
     "Smart FM Replacement (DevOps)": "Smart FM Defects through Python.xlsx",
     "Timesheet (Jira)": "Jira techcarrot Time Sheet Defects.xlsx",
-    "Emirates Transport (Jira)": "Jira Emirates Transport Defects.xlsx",
+    "Emirates Transport Career Page(Jira)": "Jira Emirates Transport Defects.xlsx",
     "Dr. RAM Ji Website Req V2 (Jira)": "Jira Doctor_Ramji_Website Defects.xlsx",
 }
 

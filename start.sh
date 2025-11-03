@@ -11,7 +11,7 @@ JIRA_PROJECT_KEY="techcarrot Time Sheet" JIRA_LABEL_FILTER="techcarrot-timesheet
 
 # Run Jira extraction for Emirates Transport
 echo "📥 Extracting defects from Jira (Emirates Transport)..."
-JIRA_PROJECT_KEY="Emirates Transport" JIRA_LABEL_FILTER="Gitex-2025" python jiraextraction.py
+JIRA_PROJECT_KEY="Emirates Transport" JIRA_LABEL_FILTER="Career_page" python jiraextraction.py
 
 # Run Jira extraction for RAM Ji Website Req V2
 echo "📥 Extracting defects from Jira (RAM Ji Website Req V2)..."
