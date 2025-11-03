@@ -124,6 +124,7 @@ app.layout = dhtml.Div([
     dcc.Store(id='data-store'),
     dcc.Store(id='scroll-trigger', data=0),
     dcc.Store(id='collapse-trigger', data=0),
+    dcc.Store(id='filter-state', data=None),
     dhtml.Div([
         dhtml.H1("Projects Defects Dashboard", 
                 style={"textAlign": "center", "color": "#1C2833", "marginBottom": "10px",
@@ -188,22 +189,24 @@ def update_data_store(n, selected_project):
      Output("links-container", "children"),
      Output("last-updated", "children"),
      Output("scroll-trigger", "data"),
-     Output("collapse-trigger", "data")],
+     Output("collapse-trigger", "data"),
+     Output("filter-state", "data")],
     [Input('data-store', 'data'),
      Input("pie-chart", "clickData"),
      Input("bar-chart-state", "clickData"),
      Input("bar-chart-severity", "clickData")],
     [State("scroll-trigger", "data"),
-     State("collapse-trigger", "data")]
+     State("collapse-trigger", "data"),
+     State("filter-state", "data")]
 )
-def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count, collapse_count):
+def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count, collapse_count, filter_state):
     if not json_data:
-        return None, {}, {}, {}, None, "", scroll_count, collapse_count
+        return None, {}, {}, {}, None, "", scroll_count, collapse_count, None
     
     df = pd.read_json(StringIO(json_data), orient='split')
     
     if df.empty:
-        return None, {}, {}, {}, None, "", scroll_count, collapse_count
+        return None, {}, {}, {}, None, "", scroll_count, collapse_count, None
     
     # Filter for open defects
     df_open = df[~df["State_Display"].str.lower().isin(["closed", "resolved"])]
@@ -352,14 +355,17 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
         )
     
     # Determine filter based on clicks (logic remains the same)
+    # Determine filter based on clicks OR preserved state
     filtered_df = df_open.copy()
     new_scroll_count = scroll_count
     new_collapse_count = collapse_count
+    new_filter_state = filter_state  # Preserve existing filter
     
     ctx = callback_context
     if ctx.triggered:
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
+        # Check if a chart was clicked
         if trigger_id in ['pie-chart', 'bar-chart-state', 'bar-chart-severity'] and ctx.triggered[0]['value']:
             new_scroll_count += 1
             new_collapse_count += 1
@@ -367,14 +373,24 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             if trigger_id == 'pie-chart':
                 severity_clicked = pie_click['points'][0]['label']
                 filtered_df = filtered_df[filtered_df["Severity"] == severity_clicked]
+                new_filter_state = {'type': 'severity', 'value': severity_clicked}
             
             elif trigger_id == 'bar-chart-state':
                 state_clicked = bar_state_click['points'][0]['x']
                 filtered_df = df[df["State_Display"] == state_clicked]
+                new_filter_state = {'type': 'state', 'value': state_clicked}
                 
             elif trigger_id == 'bar-chart-severity':
                 severity_clicked = bar_severity_click['points'][0]['x']
                 filtered_df = filtered_df[filtered_df["Severity"] == severity_clicked]
+                new_filter_state = {'type': 'severity', 'value': severity_clicked}
+        
+        # If data refreshed but filter exists, re-apply it
+        elif trigger_id == 'data-store' and filter_state:
+            if filter_state['type'] == 'severity':
+                filtered_df = filtered_df[filtered_df["Severity"] == filter_state['value']]
+            elif filter_state['type'] == 'state':
+                filtered_df = df[df["State_Display"] == filter_state['value']]
     
     # Generate links grouped by assignee
     if filtered_df.empty:
@@ -534,7 +550,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     
     last_updated = f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     
-    return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count, new_collapse_count
+    return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count, new_collapse_count, new_filter_state
 
 # ---
 ## Clientside Callbacks for UI/UX
