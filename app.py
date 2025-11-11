@@ -551,7 +551,6 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_fi
                 
                 defect_items.append(defect_item)
             
-            # Assignee header (collapsible) - OVERFLOW FIX & ALIGNMENT FIX
             assignee_section = dhtml.Div([
                 dhtml.Div([
                     dhtml.Span("▶", 
@@ -562,14 +561,13 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_fi
                                   "fontWeight": "bold", 
                                   "fontSize": "16px", 
                                   "color": "#1C2833",
-                                  "flexShrink": 1, # Allows it to shrink
-                                  "minWidth": "0", # Required for flex-shrink to work with text-overflow
+                                  "flexShrink": 1,
+                                  "minWidth": "0",
                                   "overflow": "hidden", 
                                   "textOverflow": "ellipsis", 
                                   "whiteSpace": "nowrap", 
                                   "marginRight": "10px"
                               }),
-                    # Defect count - ALIGNMENT FIX (uses flexbox on parent)
                     dhtml.Span(f"({defect_count})", 
                               style={"fontSize": "13px", "color": "#708090", "flexShrink": 0})
                 ], 
@@ -577,7 +575,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_fi
                 n_clicks=0,
                 style={
                     "width": "calc(100% - 4px)",
-                    "padding": "10px 15px", # Reduced padding
+                    "padding": "10px 15px",
                     "backgroundColor": "#ffffff",
                     "border": "1px solid #1976D2",
                     "borderRadius": "6px",
@@ -587,8 +585,8 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_fi
                     "marginBottom": "8px",
                     "boxShadow": "0 2px 5px rgba(0,0,0,0.1)",
                     "transition": "all 0.3s ease",
-                    "display": "flex", # Added for alignment
-                    "alignItems": "center", # Added for alignment
+                    "display": "flex",
+                    "alignItems": "center",
                     "boxSizing": "border-box"
                 }),
                 
@@ -611,10 +609,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_fi
     
     return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count, new_collapse_count, new_filter_state
 
-# ---
-## Clientside Callbacks for UI/UX
-
-# 1. Toggling Assignee Sections (Using the unique IDs)
+# Clientside Callbacks for UI/UX
 clientside_callback(
     """
     function(n_clicks) {
@@ -627,26 +622,20 @@ clientside_callback(
             const toggleElement = document.getElementById(toggleId);
 
             if (content && arrow && toggleElement) {
-                // Toggle display
                 const isCollapsed = content.style.display === 'none' || content.style.display === '';
                 content.style.display = isCollapsed ? 'block' : 'none';
-                
-                // Toggle arrow icon
                 arrow.textContent = isCollapsed ? '▼' : '▶';
-                
-                // Change border color on expand
                 toggleElement.style.borderColor = isCollapsed ? '#007bff' : '#1976D2';
             }
         }
         return window.dash_clientside.no_update;
     }
     """,
-    Output('scroll-output', 'children'), # Dummy output
-    [Input({'type': 'toggle', 'index': dash.ALL}, 'n_clicks')], # Using dash.ALL
+    Output('scroll-output', 'children'),
+    [Input({'type': 'toggle', 'index': dash.ALL}, 'n_clicks')],
     prevent_initial_call=True
 )
 
-# 2. Add dynamic click listeners for all generated toggle buttons (handles collapse on chart filter)
 clientside_callback(
     """
     function(data_store_data, collapse_trigger) {
@@ -654,7 +643,6 @@ clientside_callback(
             return '';
         }
         
-        // This function will collapse all open sections (used for filtering/project change)
         function collapseAllSections() {
             const toggleButtons = document.querySelectorAll('[id^="toggle-assignee-section-"]');
             toggleButtons.forEach(toggleElement => {
@@ -665,19 +653,16 @@ clientside_callback(
                 if (content && arrow && content.style.display !== 'none') {
                     content.style.display = 'none';
                     arrow.textContent = '▶';
-                    toggleElement.style.borderColor = '#1976D2'; // Reset border color
+                    toggleElement.style.borderColor = '#1976D2';
                 }
             });
         }
         
-        // Collapse all sections when the collapse trigger changes (i.e., on chart click)
         if (dash_clientside.callback_context.triggered.length > 0 && 
             dash_clientside.callback_context.triggered[0].prop_id.startsWith('collapse-trigger')) {
-            // Give the DOM a moment to render the new list before collapsing
             setTimeout(collapseAllSections, 100); 
         }
 
-        // Attach a single, persistent event listener to the document body (Handles manual clicks)
         if (!window.assigneeToggleListenerAttached) {
             document.addEventListener('click', function(e) {
                 let toggleElement = e.target.closest('[id^="toggle-assignee-section-"]');
@@ -700,13 +685,12 @@ clientside_callback(
         return '';
     }
     """,
-    Output('scroll-output', 'style', allow_duplicate=True), # Dummy output
+    Output('scroll-output', 'style', allow_duplicate=True),
     [Input('data-store', 'data'),
      Input('collapse-trigger', 'data')],
     prevent_initial_call=True 
 )
 
-# 3. Scroll to Defects Section on Chart Click
 clientside_callback(
     """
     function(scroll_trigger) {
@@ -725,7 +709,6 @@ clientside_callback(
     Input('scroll-trigger', 'data'),
     prevent_initial_call=True
 )
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
