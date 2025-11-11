@@ -270,16 +270,37 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_fi
     
     # === Apply Tag and Environment Filters for Smart FM ===
     if selected_project == "Smart FM Replacement (DevOps)":
+        print(f"\n🔍 FILTER DEBUG - Smart FM Project Selected")
+        print(f"   Tag Filter: {tag_filter}")
+        print(f"   Environment Filter: {env_filter}")
+        print(f"   Total records before filtering: {len(df)}")
+        
         # Filter by Tag
         if tag_filter and tag_filter != 'all':
             if 'Tags' in df.columns:
+                before_count = len(df)
                 df = df[df['Tags'].fillna('').str.contains(tag_filter, case=False, na=False, regex=False)]
+                print(f"   After Tag filter: {len(df)} records (removed {before_count - len(df)})")
         
         # FIXED: Filter by Environment - use exact match instead of contains
         if env_filter and env_filter != 'all':
             if 'Environment' in df.columns:
-                # Exact match: Environment column should equal the selected filter
+                before_count = len(df)
+                
+                # Debug: Show unique environment values
+                unique_envs = df['Environment'].fillna('').unique()
+                print(f"   Unique Environment values in data: {unique_envs}")
+                
+                # Debug: Show sample of environment values
+                sample_envs = df['Environment'].fillna('').head(10).tolist()
+                print(f"   Sample Environment values: {sample_envs}")
+                
+                # Apply filter
                 df = df[df['Environment'].fillna('').str.strip().str.upper() == env_filter.upper()]
+                print(f"   After Environment filter ({env_filter}): {len(df)} records (removed {before_count - len(df)})")
+            else:
+                print(f"   ⚠️ WARNING: 'Environment' column not found in dataframe!")
+                print(f"   Available columns: {df.columns.tolist()}")
     
     # Filter for open defects
     df_open = df[~df["State_Display"].str.lower().isin(["closed", "resolved"])]

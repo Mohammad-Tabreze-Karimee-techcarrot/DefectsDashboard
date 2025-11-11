@@ -13,7 +13,7 @@ pat = os.getenv("DEVOPS_PAT")   # <-- set this in your environment
 query_path = "My Queries/Smart-FM Replacement"
 query_path_encoded = quote(query_path, safe='')
 
-print("🔄 Starting defects extraction...")
+print("📄 Starting defects extraction...")
 start_time = time.time()
 
 # 1️⃣ Get saved query ID
@@ -56,8 +56,21 @@ sheet = wb.active
 sheet.title = "Defects"
 sheet.append(["ID", "Work Item Type", "Title", "State", "Assigned To", "Tags", "Environment", "Severity", "Issue Links"])
 
+# 🔍 DEBUG: Track environment extraction
+print("\n" + "="*80)
+print("🔍 DEBUGGING ENVIRONMENT EXTRACTION")
+print("="*80)
+
+environment_stats = {
+    "SIT": 0,
+    "UAT": 0,
+    "Both": 0,
+    "None": 0,
+    "samples": []
+}
+
 # 4️⃣ Fetch details for each work item with progress indicator
-print("📥 Fetching work item details...")
+print("\n📥 Fetching work item details...")
 for idx, work_id in enumerate(ids, start=1):
     if idx % 10 == 0 or idx == len(ids):
         print(f"   Progress: {idx}/{len(ids)} work items processed...")
@@ -80,15 +93,52 @@ for idx, work_id in enumerate(ids, start=1):
         # Extract Tags
         tags = fields.get("System.Tags", "")
         
+        # 🔍 DEBUG: Log tags extraction
+        if idx <= 5:  # Log first 5 items in detail
+            print(f"\n--- Work Item {work_id} ---")
+            print(f"   Raw Tags field: '{tags}'")
+            print(f"   Tags type: {type(tags)}")
+        
         # Extract Environment from Tags
         # Check if tags contain SIT or UAT
         environment = ""
         if tags:
             tags_lower = tags.lower()
-            if "sit" in tags_lower:
+            tags_list = [t.strip() for t in str(tags).split(';')]
+            
+            has_sit = "sit" in tags_lower
+            has_uat = "uat" in tags_lower
+            
+            if has_sit and has_uat:
+                environment = "SIT, UAT"
+                environment_stats["Both"] += 1
+            elif has_sit:
                 environment = "SIT"
-            elif "uat" in tags_lower:
+                environment_stats["SIT"] += 1
+            elif has_uat:
                 environment = "UAT"
+                environment_stats["UAT"] += 1
+            else:
+                environment_stats["None"] += 1
+            
+            # 🔍 DEBUG: Log environment detection
+            if idx <= 5:
+                print(f"   Tags list: {tags_list}")
+                print(f"   Has SIT: {has_sit}, Has UAT: {has_uat}")
+                print(f"   Extracted Environment: '{environment}'")
+        else:
+            environment_stats["None"] += 1
+            if idx <= 5:
+                print(f"   Tags field is empty")
+                print(f"   Extracted Environment: '{environment}'")
+        
+        # Store sample for debugging
+        if len(environment_stats["samples"]) < 10:
+            environment_stats["samples"].append({
+                "id": work_id,
+                "tags": tags,
+                "environment": environment
+            })
 
         # Extract data
         row_num = idx + 1
@@ -111,6 +161,20 @@ for idx, work_id in enumerate(ids, start=1):
         print(f"⚠️ Error processing work item {work_id}: {str(e)}")
         continue
 
+# 🔍 DEBUG: Print environment extraction summary
+print("\n" + "="*80)
+print("📊 ENVIRONMENT EXTRACTION SUMMARY")
+print("="*80)
+print(f"Total work items processed: {len(ids)}")
+print(f"Items with SIT only: {environment_stats['SIT']}")
+print(f"Items with UAT only: {environment_stats['UAT']}")
+print(f"Items with both SIT & UAT: {environment_stats['Both']}")
+print(f"Items with no environment: {environment_stats['None']}")
+print("\n📝 Sample entries:")
+for sample in environment_stats["samples"]:
+    print(f"   ID {sample['id']}: Tags='{sample['tags']}' → Environment='{sample['environment']}'")
+print("="*80 + "\n")
+
 # 5️⃣ Adjust column widths
 for col in range(1, 10):
     sheet.column_dimensions[get_column_letter(col)].width = 40
@@ -129,3 +193,7 @@ elapsed_time = round(end_time - start_time, 2)
 print(f"✅ Excel file saved at: {save_path}")
 print(f"⏱️ Total execution time: {elapsed_time} seconds")
 print(f"📊 Total defects extracted: {len(ids)}")
+
+# 🔍 Additional debug info
+print("\n💡 TIP: Check the Excel file 'Environment' column (Column G) to verify values")
+print("💡 Expected values: 'SIT', 'UAT', 'SIT, UAT', or empty string")
