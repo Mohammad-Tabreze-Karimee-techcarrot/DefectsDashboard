@@ -54,7 +54,7 @@ print(f"✅ Found {len(ids)} work items. Fetching details...")
 wb = openpyxl.Workbook()
 sheet = wb.active
 sheet.title = "Defects"
-sheet.append(["ID", "Work Item Type", "Title", "State", "Assigned To", "Tags", "Severity", "Issue Links"])
+sheet.append(["ID", "Work Item Type", "Title", "State", "Assigned To", "Tags", "Environment", "Severity", "Issue Links"])
 
 # 4️⃣ Fetch details for each work item with progress indicator
 print("📥 Fetching work item details...")
@@ -77,6 +77,19 @@ for idx, work_id in enumerate(ids, start=1):
         # Direct DevOps URL for the defect
         issue_link = f"https://dev.azure.com/{organization}/{project}/_workitems/edit/{wi_detail.get('id', '')}"
 
+        # Extract Tags
+        tags = fields.get("System.Tags", "")
+        
+        # Extract Environment from Tags
+        # Check if tags contain SIT or UAT
+        environment = ""
+        if tags:
+            tags_lower = tags.lower()
+            if "sit" in tags_lower:
+                environment = "SIT"
+            elif "uat" in tags_lower:
+                environment = "UAT"
+
         # Extract data
         row_num = idx + 1
         sheet.cell(row=row_num, column=1, value=wi_detail.get("id", ""))
@@ -86,9 +99,10 @@ for idx, work_id in enumerate(ids, start=1):
         sheet.cell(row=row_num, column=5,
                    value=fields.get("System.AssignedTo", {}).get("displayName", "")
                    if fields.get("System.AssignedTo") else "")
-        sheet.cell(row=row_num, column=6, value=fields.get("System.Tags", ""))
-        sheet.cell(row=row_num, column=7, value=fields.get("Microsoft.VSTS.Common.Severity", ""))
-        sheet.cell(row=row_num, column=8, value=issue_link)
+        sheet.cell(row=row_num, column=6, value=tags)
+        sheet.cell(row=row_num, column=7, value=environment)
+        sheet.cell(row=row_num, column=8, value=fields.get("Microsoft.VSTS.Common.Severity", ""))
+        sheet.cell(row=row_num, column=9, value=issue_link)
         
     except requests.exceptions.Timeout:
         print(f"⚠️ Timeout fetching work item {work_id}")
@@ -98,7 +112,7 @@ for idx, work_id in enumerate(ids, start=1):
         continue
 
 # 5️⃣ Adjust column widths
-for col in range(1, 9):
+for col in range(1, 10):
     sheet.column_dimensions[get_column_letter(col)].width = 40
 
 # 6️⃣ Save Excel
