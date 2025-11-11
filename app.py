@@ -23,8 +23,8 @@ PROJECTS = {
     "Dr. RAM Ji Website Req V2 (Jira)": "Jira Doctor_Ramji_Website Defects.xlsx",
 }
 
-# Filter configurations for Smart FM project
-SMART_FM_TAGS = ["Move In", "Move Out", "Master Data Setup", "Account Renewal", "Active Resident"]
+# Filter configurations for Smart FM project - FIXED: Added "Security" tag
+SMART_FM_TAGS = ["Move In", "Move Out", "Master Data Setup", "Account Renewal", "Active Resident", "Security"]
 SMART_FM_ENVIRONMENTS = ["SIT", "UAT"]
 
 def load_data(project_name):
@@ -275,10 +275,11 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_fi
             if 'Tags' in df.columns:
                 df = df[df['Tags'].fillna('').str.contains(tag_filter, case=False, na=False, regex=False)]
         
-        # Filter by Environment
+        # FIXED: Filter by Environment - use exact match instead of contains
         if env_filter and env_filter != 'all':
             if 'Environment' in df.columns:
-                df = df[df['Environment'].fillna('').str.contains(env_filter, case=False, na=False, regex=False)]
+                # Exact match: Environment column should equal the selected filter
+                df = df[df['Environment'].fillna('').str.strip().str.upper() == env_filter.upper()]
     
     # Filter for open defects
     df_open = df[~df["State_Display"].str.lower().isin(["closed", "resolved"])]
