@@ -4,7 +4,7 @@ from io import StringIO
 import plotly.express as px
 import plotly.graph_objects as go
 from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State, clientside_callback
-import dash # <-- Required for dash.dependencies.ALL
+import dash
 from datetime import datetime
 import subprocess
 import threading
@@ -23,6 +23,10 @@ PROJECTS = {
     "Dr. RAM Ji Website Req V2 (Jira)": "Jira Doctor_Ramji_Website Defects.xlsx",
 }
 
+# Filter configurations for Smart FM project - FIXED: Added "Security" tag
+SMART_FM_TAGS = ["Move In", "Move Out", "Master Data Setup", "Account Renewal", "Active Resident", "Security"]
+SMART_FM_ENVIRONMENTS = ["SIT", "UAT"]
+
 def load_data(project_name):
     """Load data from Excel file for a specific project"""
     excel_file = os.path.join(data_folder, PROJECTS.get(project_name))
@@ -32,7 +36,7 @@ def load_data(project_name):
         if os.path.exists(data_folder):
             available_files = os.listdir(data_folder)
             print(f"Available files in data folder: {available_files}")
-        return pd.DataFrame(columns=["State", "ID", "Issue Links", "Severity", "Assigned To", "Title"])
+        return pd.DataFrame(columns=["State", "ID", "Issue Links", "Severity", "Assigned To", "Title", "Tags", "Environment"])
     
     df = pd.read_excel(excel_file)
     
@@ -48,7 +52,7 @@ def load_data(project_name):
         }
         df["State_Display"] = df["State"].map(state_mapping).fillna(df["State"])
     
-    required_cols = ["State", "ID", "Issue Links", "Severity", "Assigned To", "Title"]
+    required_cols = ["State", "ID", "Issue Links", "Severity", "Assigned To", "Title", "Tags", "Environment"]
     for col in required_cols:
         if col not in df.columns:
             df[col] = "N/A"
@@ -133,7 +137,7 @@ app.layout = dhtml.Div([
                                             "fontSize": "13px", "marginBottom": "20px"})
     ]),
     
-    # Project Selector - FIXED ALIGNMENT
+    # Project Selector
     dhtml.Div([
         dhtml.Div("Select Project:", style={"fontWeight": "bold", "marginRight": "10px", 
                                                "fontSize": "15px", "color": "#1C2833"}),
@@ -145,15 +149,57 @@ app.layout = dhtml.Div([
         )
     ], style={
         "textAlign": "center", 
-        "marginBottom": "30px",
+        "marginBottom": "20px",
         "display": "flex", 
         "justifyContent": "center",
-        "alignItems": "center" # Vertical alignment fix
+        "alignItems": "center"
     }),
+    
+    # Smart FM Filters (conditionally displayed)
+    dhtml.Div(id='smart-fm-filters', children=[
+        dhtml.Div([
+            # Tag Filter
+            dhtml.Div([
+                dhtml.Label("Filter by Tag:", style={"fontWeight": "bold", "marginRight": "10px", 
+                                                      "fontSize": "14px", "color": "#1C2833"}),
+                dcc.Dropdown(
+                    id='tag-filter',
+                    options=[{'label': 'All Tags', 'value': 'all'}] + 
+                            [{'label': tag, 'value': tag} for tag in SMART_FM_TAGS],
+                    value='all',
+                    clearable=False,
+                    style={"width": "250px", "boxShadow": "0 1px 3px rgba(0,0,0,0.1)"}
+                )
+            ], style={"display": "flex", "alignItems": "center", "marginRight": "20px"}),
+            
+            # Environment Filter
+            dhtml.Div([
+                dhtml.Label("Environment:", style={"fontWeight": "bold", "marginRight": "10px", 
+                                                    "fontSize": "14px", "color": "#1C2833"}),
+                dcc.Dropdown(
+                    id='environment-filter',
+                    options=[{'label': 'All Environments', 'value': 'all'}] + 
+                            [{'label': env, 'value': env} for env in SMART_FM_ENVIRONMENTS],
+                    value='all',
+                    clearable=False,
+                    style={"width": "200px", "boxShadow": "0 1px 3px rgba(0,0,0,0.1)"}
+                )
+            ], style={"display": "flex", "alignItems": "center"}),
+        ], style={
+            "display": "flex",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "marginBottom": "20px",
+            "padding": "15px",
+            "backgroundColor": "#ffffff",
+            "borderRadius": "8px",
+            "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
+        })
+    ], style={"display": "none"}),
 
     dhtml.Div(id="status-table"),
 
-    # Charts section: Small size maintained
+    # Charts section
     dhtml.Div([
         dcc.Graph(id="pie-chart", style={"width": "32%", "height": "350px", "margin": "0.5%"}, config={'displayModeBar': False}),
         dcc.Graph(id="bar-chart-state", style={"width": "32%", "height": "350px", "margin": "0.5%"}, config={'displayModeBar': False}),
@@ -182,6 +228,17 @@ def update_data_store(n, selected_project):
     return df.to_json(date_format='iso', orient='split')
 
 @app.callback(
+    Output('smart-fm-filters', 'style'),
+    [Input('project-selector', 'value')]
+)
+def toggle_smart_fm_filters(selected_project):
+    """Show filters only for Smart FM project"""
+    if selected_project == "Smart FM Replacement (DevOps)":
+        return {"display": "block"}
+    else:
+        return {"display": "none"}
+
+@app.callback(
     [Output("status-table", "children"),
      Output("pie-chart", "figure"),
      Output("bar-chart-state", "figure"),
@@ -194,12 +251,15 @@ def update_data_store(n, selected_project):
     [Input('data-store', 'data'),
      Input("pie-chart", "clickData"),
      Input("bar-chart-state", "clickData"),
-     Input("bar-chart-severity", "clickData")],
+     Input("bar-chart-severity", "clickData"),
+     Input('tag-filter', 'value'),
+     Input('environment-filter', 'value'),
+     Input('project-selector', 'value')],
     [State("scroll-trigger", "data"),
      State("collapse-trigger", "data"),
      State("filter-state", "data")]
 )
-def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll_count, collapse_count, filter_state):
+def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_filter, env_filter, selected_project, scroll_count, collapse_count, filter_state):
     if not json_data:
         return None, {}, {}, {}, None, "", scroll_count, collapse_count, None
     
@@ -207,6 +267,40 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     
     if df.empty:
         return None, {}, {}, {}, None, "", scroll_count, collapse_count, None
+    
+    # === Apply Tag and Environment Filters for Smart FM ===
+    if selected_project == "Smart FM Replacement (DevOps)":
+        print(f"\n🔍 FILTER DEBUG - Smart FM Project Selected")
+        print(f"   Tag Filter: {tag_filter}")
+        print(f"   Environment Filter: {env_filter}")
+        print(f"   Total records before filtering: {len(df)}")
+        
+        # Filter by Tag
+        if tag_filter and tag_filter != 'all':
+            if 'Tags' in df.columns:
+                before_count = len(df)
+                df = df[df['Tags'].fillna('').str.contains(tag_filter, case=False, na=False, regex=False)]
+                print(f"   After Tag filter: {len(df)} records (removed {before_count - len(df)})")
+        
+        # FIXED: Filter by Environment - use exact match instead of contains
+        if env_filter and env_filter != 'all':
+            if 'Environment' in df.columns:
+                before_count = len(df)
+                
+                # Debug: Show unique environment values
+                unique_envs = df['Environment'].fillna('').unique()
+                print(f"   Unique Environment values in data: {unique_envs}")
+                
+                # Debug: Show sample of environment values
+                sample_envs = df['Environment'].fillna('').head(10).tolist()
+                print(f"   Sample Environment values: {sample_envs}")
+                
+                # Apply filter
+                df = df[df['Environment'].fillna('').str.strip().str.upper() == env_filter.upper()]
+                print(f"   After Environment filter ({env_filter}): {len(df)} records (removed {before_count - len(df)})")
+            else:
+                print(f"   ⚠️ WARNING: 'Environment' column not found in dataframe!")
+                print(f"   Available columns: {df.columns.tolist()}")
     
     # Filter for open defects
     df_open = df[~df["State_Display"].str.lower().isin(["closed", "resolved"])]
@@ -225,53 +319,46 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     closed_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Closed", "Count"].sum()) if "Closed" in state_counts_df["State_Display"].values else 0
     resolved_count = int(state_counts_df.loc[state_counts_df["State_Display"]=="Resolved", "Count"].sum()) if "Resolved" in state_counts_df["State_Display"].values else 0
     
-    # Status Table - HEIGHT REDUCTION (smaller padding/font)
+    # Status Table
     status_table = dhtml.Div([
         dhtml.Div([
-            # Total Defects Card (Smaller font/padding)
             dhtml.Div([
                 dhtml.Div(str(total_defects), style={"fontSize": "24px", "fontWeight": "bold", "color": "#1C2833"}),
                 dhtml.Div("Total Defects", style={"fontSize": "11px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#EBF0F7", # Reduced padding
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#EBF0F7",
                      "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
-            # New Defects Card
             dhtml.Div([
                 dhtml.Div(str(new_count), style={"fontSize": "24px", "fontWeight": "bold", "color": state_colors['New']}),
                 dhtml.Div("New", style={"fontSize": "11px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FFEBEB", # Reduced padding
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FFEBEB",
                      "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
-            # Reopen Defects Card
             dhtml.Div([
                 dhtml.Div(str(reopen_count), style={"fontSize": "24px", "fontWeight": "bold", "color": state_colors['Reopen']}),
                 dhtml.Div("Reopen", style={"fontSize": "11px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FEE4E4", # Reduced padding
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FEE4E4",
                      "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
-            # Closed Defects Card
             dhtml.Div([
                 dhtml.Div(str(closed_count), style={"fontSize": "24px", "fontWeight": "bold", "color": state_colors['Closed']}),
                 dhtml.Div("Closed", style={"fontSize": "11px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#E8F5E9", # Reduced padding
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#E8F5E9",
                      "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
             
-            # Resolved Defects Card
             dhtml.Div([
                 dhtml.Div(str(resolved_count), style={"fontSize": "24px", "fontWeight": "bold", "color": state_colors['Resolved']}),
                 dhtml.Div("Resolved", style={"fontSize": "11px", "color": "#708090"})
-            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FFF8E1", # Reduced padding
+            ], style={"textAlign": "center", "padding": "10px", "backgroundColor": "#FFF8E1",
                      "borderRadius": "6px", "margin": "6px", "flex": "1", "minWidth": "100px",
                      "boxShadow": "0 2px 4px rgba(0,0,0,0.05)"}),
         ], style={"display": "flex", "flexDirection": "row", "justifyContent": "center", 
                  "flexWrap": "wrap", "padding": "0 20px"})
     ])
-    
-    # Chart generation logic 
     
     # Pie Chart
     if severity_counts["Count"].sum() == 0:
@@ -354,12 +441,11 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             margin=dict(l=10, r=10, t=40, b=10)
         )
     
-    # Determine filter based on clicks (logic remains the same)
     # Determine filter based on clicks OR preserved state
     filtered_df = df_open.copy()
     new_scroll_count = scroll_count
     new_collapse_count = collapse_count
-    new_filter_state = filter_state  # Preserve existing filter
+    new_filter_state = filter_state
     
     ctx = callback_context
     if ctx.triggered:
@@ -418,7 +504,6 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
             })
         ])
     else:
-        # Group by assignee
         assignee_groups = filtered_df.groupby("Assigned To")
         assignee_sections = []
         
@@ -448,9 +533,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                 if not defect_title or defect_title == "N/A" or defect_title == "nan":
                     defect_title = "No summary available"
                 
-                # Defect item - Relocated "View" link
                 defect_item = dhtml.Div([
-                    # First row: ID, State, Severity, Link
                     dhtml.Div([
                         dhtml.Span(f"{row.get('ID', 'N/A')}", 
                                   style={"fontWeight": "600", "marginRight": "15px", "color": "#1C2833", "fontSize": "13px"}),
@@ -459,10 +542,9 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                             "fontSize": "11px", "fontWeight": "bold", **state_style
                         }),
                         dhtml.Span(row.get("Severity", "N/A"), style={
-                            "padding": "3px 8px", "borderRadius": "3px", "marginRight": "10px", # Reduced margin
+                            "padding": "3px 8px", "borderRadius": "3px", "marginRight": "10px",
                             "fontSize": "11px", "fontWeight": "bold", **severity_style
                         }),
-                        # View Link moved next to Severity
                         dhtml.A("🔗 View", href=row.get("Issue Links", "#"), target="_blank",
                                style={"color": "#1976D2", "textDecoration": "none", "fontWeight": "bold", 
                                      "fontSize": "12px"})
@@ -472,7 +554,6 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                         "flexWrap": "wrap",
                         "marginBottom": "8px"
                     }),
-                    # Second row: Summary
                     dhtml.Div([
                         dhtml.Span("Summary: ", style={"fontWeight": "600", "color": "#546E7A", "fontSize": "12px"}),
                         dhtml.Span(defect_title, style={"color": "#607D8B", "fontSize": "12px", "lineHeight": "1.5"})
@@ -482,8 +563,8 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                         "paddingTop": "6px"
                     })
                 ], style={
-                    "padding": "10px 15px", # Reduced padding for smaller card
-                    "marginBottom": "8px", # Reduced margin
+                    "padding": "10px 15px",
+                    "marginBottom": "8px",
                     "backgroundColor": "#ffffff",
                     "borderRadius": "5px",
                     "border": "1px solid #CFD8DC",
@@ -492,7 +573,6 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                 
                 defect_items.append(defect_item)
             
-            # Assignee header (collapsible) - OVERFLOW FIX & ALIGNMENT FIX
             assignee_section = dhtml.Div([
                 dhtml.Div([
                     dhtml.Span("▶", 
@@ -503,14 +583,13 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                                   "fontWeight": "bold", 
                                   "fontSize": "16px", 
                                   "color": "#1C2833",
-                                  "flexShrink": 1, # Allows it to shrink
-                                  "minWidth": "0", # Required for flex-shrink to work with text-overflow
+                                  "flexShrink": 1,
+                                  "minWidth": "0",
                                   "overflow": "hidden", 
                                   "textOverflow": "ellipsis", 
                                   "whiteSpace": "nowrap", 
                                   "marginRight": "10px"
                               }),
-                    # Defect count - ALIGNMENT FIX (uses flexbox on parent)
                     dhtml.Span(f"({defect_count})", 
                               style={"fontSize": "13px", "color": "#708090", "flexShrink": 0})
                 ], 
@@ -518,7 +597,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                 n_clicks=0,
                 style={
                     "width": "calc(100% - 4px)",
-                    "padding": "10px 15px", # Reduced padding
+                    "padding": "10px 15px",
                     "backgroundColor": "#ffffff",
                     "border": "1px solid #1976D2",
                     "borderRadius": "6px",
@@ -528,8 +607,8 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
                     "marginBottom": "8px",
                     "boxShadow": "0 2px 5px rgba(0,0,0,0.1)",
                     "transition": "all 0.3s ease",
-                    "display": "flex", # Added for alignment
-                    "alignItems": "center", # Added for alignment
+                    "display": "flex",
+                    "alignItems": "center",
                     "boxSizing": "border-box"
                 }),
                 
@@ -552,10 +631,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, scroll
     
     return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count, new_collapse_count, new_filter_state
 
-# ---
-## Clientside Callbacks for UI/UX
-
-# 1. Toggling Assignee Sections (Using the unique IDs)
+# Clientside Callbacks for UI/UX
 clientside_callback(
     """
     function(n_clicks) {
@@ -568,26 +644,20 @@ clientside_callback(
             const toggleElement = document.getElementById(toggleId);
 
             if (content && arrow && toggleElement) {
-                // Toggle display
                 const isCollapsed = content.style.display === 'none' || content.style.display === '';
                 content.style.display = isCollapsed ? 'block' : 'none';
-                
-                // Toggle arrow icon
                 arrow.textContent = isCollapsed ? '▼' : '▶';
-                
-                // Change border color on expand
                 toggleElement.style.borderColor = isCollapsed ? '#007bff' : '#1976D2';
             }
         }
         return window.dash_clientside.no_update;
     }
     """,
-    Output('scroll-output', 'children'), # Dummy output
-    [Input({'type': 'toggle', 'index': dash.ALL}, 'n_clicks')], # Using dash.ALL
+    Output('scroll-output', 'children'),
+    [Input({'type': 'toggle', 'index': dash.ALL}, 'n_clicks')],
     prevent_initial_call=True
 )
 
-# 2. Add dynamic click listeners for all generated toggle buttons (handles collapse on chart filter)
 clientside_callback(
     """
     function(data_store_data, collapse_trigger) {
@@ -595,7 +665,6 @@ clientside_callback(
             return '';
         }
         
-        // This function will collapse all open sections (used for filtering/project change)
         function collapseAllSections() {
             const toggleButtons = document.querySelectorAll('[id^="toggle-assignee-section-"]');
             toggleButtons.forEach(toggleElement => {
@@ -606,19 +675,16 @@ clientside_callback(
                 if (content && arrow && content.style.display !== 'none') {
                     content.style.display = 'none';
                     arrow.textContent = '▶';
-                    toggleElement.style.borderColor = '#1976D2'; // Reset border color
+                    toggleElement.style.borderColor = '#1976D2';
                 }
             });
         }
         
-        // Collapse all sections when the collapse trigger changes (i.e., on chart click)
         if (dash_clientside.callback_context.triggered.length > 0 && 
             dash_clientside.callback_context.triggered[0].prop_id.startsWith('collapse-trigger')) {
-            // Give the DOM a moment to render the new list before collapsing
             setTimeout(collapseAllSections, 100); 
         }
 
-        // Attach a single, persistent event listener to the document body (Handles manual clicks)
         if (!window.assigneeToggleListenerAttached) {
             document.addEventListener('click', function(e) {
                 let toggleElement = e.target.closest('[id^="toggle-assignee-section-"]');
@@ -641,13 +707,12 @@ clientside_callback(
         return '';
     }
     """,
-    Output('scroll-output', 'style', allow_duplicate=True), # Dummy output
+    Output('scroll-output', 'style', allow_duplicate=True),
     [Input('data-store', 'data'),
      Input('collapse-trigger', 'data')],
     prevent_initial_call=True 
 )
 
-# 3. Scroll to Defects Section on Chart Click
 clientside_callback(
     """
     function(scroll_trigger) {
@@ -666,7 +731,6 @@ clientside_callback(
     Input('scroll-trigger', 'data'),
     prevent_initial_call=True
 )
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
