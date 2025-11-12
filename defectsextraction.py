@@ -93,44 +93,71 @@ for idx, work_id in enumerate(ids, start=1):
         # Extract Tags
         tags = fields.get("System.Tags", "")
         
-        # 🔍 DEBUG: Log tags extraction
-        if idx <= 5:  # Log first 5 items in detail
-            print(f"\n--- Work Item {work_id} ---")
-            print(f"   Raw Tags field: '{tags}'")
-            print(f"   Tags type: {type(tags)}")
+        # 🔍 DEBUG: Log ALL fields for first work item to find Environment field
+        if idx == 1:
+            print(f"\n{'='*80}")
+            print(f"🔍 WORK ITEM {work_id} - FINDING ENVIRONMENT FIELD")
+            print(f"{'='*80}")
+            print("   All available fields:")
+            for key in sorted(fields.keys()):
+                value = fields.get(key)
+                # Only show non-empty fields
+                if value and value != "":
+                    print(f"      {key} = '{value}'")
+            print(f"{'='*80}\n")
         
-        # Extract Environment from Tags
-        # Check if tags contain SIT or UAT
+        # 🔍 DEBUG: Log tags for first 5 items
+        if idx <= 5:
+            print(f"\n--- Work Item {work_id} ---")
+            print(f"   Tags: '{tags}'")
+        
+        # Extract Environment - Try ALL possible field name patterns
         environment = ""
-        if tags:
+        
+        # Search through ALL fields for anything containing "environment"
+        for field_key, field_value in fields.items():
+            if "environment" in field_key.lower() and field_value:
+                environment = str(field_value).strip()
+                if idx <= 5:
+                    print(f"   ✅ Found Environment field: '{field_key}' = '{environment}'")
+                break
+        
+        # If no dedicated field found, try parsing from tags as fallback
+        if not environment and tags:
             tags_lower = tags.lower()
             tags_list = [t.strip() for t in str(tags).split(';')]
             
-            has_sit = "sit" in tags_lower
-            has_uat = "uat" in tags_lower
+            # Look for SIT or UAT in individual tags
+            for tag in tags_list:
+                tag_upper = tag.upper()
+                if tag_upper == "SIT":
+                    environment = "SIT"
+                    break
+                elif tag_upper == "UAT":
+                    environment = "UAT"
+                    break
             
-            if has_sit and has_uat:
-                environment = "SIT, UAT"
+            if idx <= 5:
+                print(f"   Parsing from tags: {tags_list}")
+                if environment:
+                    print(f"   ✅ Environment from tags: '{environment}'")
+        
+        # Update statistics
+        if environment:
+            env_upper = environment.upper()
+            if "SIT" in env_upper and "UAT" in env_upper:
                 environment_stats["Both"] += 1
-            elif has_sit:
-                environment = "SIT"
+            elif "SIT" in env_upper:
                 environment_stats["SIT"] += 1
-            elif has_uat:
-                environment = "UAT"
+            elif "UAT" in env_upper:
                 environment_stats["UAT"] += 1
             else:
                 environment_stats["None"] += 1
-            
-            # 🔍 DEBUG: Log environment detection
-            if idx <= 5:
-                print(f"   Tags list: {tags_list}")
-                print(f"   Has SIT: {has_sit}, Has UAT: {has_uat}")
-                print(f"   Extracted Environment: '{environment}'")
         else:
             environment_stats["None"] += 1
-            if idx <= 5:
-                print(f"   Tags field is empty")
-                print(f"   Extracted Environment: '{environment}'")
+        
+        if idx <= 5:
+            print(f"   Final Environment value: '{environment}'")
         
         # Store sample for debugging
         if len(environment_stats["samples"]) < 10:
