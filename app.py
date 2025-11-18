@@ -96,7 +96,7 @@ def refresh_data_from_sources():
 def schedule_data_refresh():
     """Background thread to refresh data every 5 minutes"""
     while True:
-        time.sleep(300)
+        time.sleep(120)
         refresh_data_from_sources()
 
 # Start background refresh thread
@@ -136,6 +136,7 @@ app.layout = dhtml.Div([
                        "fontFamily": "Segoe UI, Arial, sans-serif", "fontWeight": "600"}),
         dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#708090", 
                                             "fontSize": "13px", "marginBottom": "20px"})
+        dhtml.Div(id='refresh-status', style={"display": "inline-block"})
     ]),
     
     # Project Selector
@@ -156,6 +157,42 @@ app.layout = dhtml.Div([
         "alignItems": "center"
     }),
     
+    # In app.layout, ADD after the project selector:
+dhtml.Div([
+    dhtml.Button(
+        "🔄 Refresh Data Now",
+        id="refresh-button",
+        n_clicks=0,
+        style={
+            "padding": "8px 16px",
+            "backgroundColor": "#1976D2",
+            "color": "white",
+            "border": "none",
+            "borderRadius": "4px",
+            "cursor": "pointer",
+            "fontWeight": "bold",
+            "fontSize": "13px",
+            "marginLeft": "20px"
+        }
+    )
+], style={
+    "display": "flex",
+    "justifyContent": "center",
+    "alignItems": "center",
+    "marginBottom": "20px"
+})
+
+@app.callback(
+    Output('refresh-status', 'children'),
+    Input('refresh-button', 'n_clicks'),
+    prevent_initial_call=True
+)
+def manual_refresh(n_clicks):
+    """Manually refresh data on button click"""
+    print(f"🔘 Manual refresh triggered (click #{n_clicks})")
+    refresh_data_from_sources()
+    return dhtml.Div("✅ Data refreshed!", style={"color": "green", "fontSize": "12px", "marginLeft": "20px"})
+
     # Smart FM Filters (conditionally displayed)
     dhtml.Div(id='smart-fm-filters', children=[
         dhtml.Div([
