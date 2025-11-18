@@ -149,7 +149,7 @@ app.layout = dhtml.Div([
                 style={"textAlign": "center", "color": "#1C2833", "marginBottom": "10px",
                        "fontFamily": "Segoe UI, Arial, sans-serif", "fontWeight": "600"}),
         dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#708090", 
-                                            "fontSize": "13px", "marginBottom": "20px"})
+                                            "fontSize": "13px", "marginBottom": "20px"}),
         dhtml.Div(id='refresh-status', style={"display": "inline-block"})
     ]),
     
