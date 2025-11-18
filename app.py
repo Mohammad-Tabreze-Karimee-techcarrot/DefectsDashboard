@@ -81,20 +81,34 @@ def refresh_data_from_sources():
         
         devops_script = os.path.join(current_dir, "defectsextraction.py")
         if os.path.exists(devops_script):
-            print("  📥 Extracting from Azure DevOps...")
-            subprocess.run(["python", devops_script], check=True)
+            print("  🔥 Extracting from Azure DevOps...")
+            result = subprocess.run(["python", devops_script], 
+                                  capture_output=True, 
+                                  text=True, 
+                                  check=True)
+            if result.returncode != 0:
+                print(f"  ⚠️ DevOps extraction warning: {result.stderr}")
         
         jira_script = os.path.join(current_dir, "jiraextraction.py")
         if os.path.exists(jira_script):
-            print("  📥 Extracting from Jira...")
-            subprocess.run(["python", jira_script], check=True)
+            print("  🔥 Extracting from Jira...")
+            result = subprocess.run(["python", jira_script], 
+                                  capture_output=True, 
+                                  text=True, 
+                                  check=True)
+            if result.returncode != 0:
+                print(f"  ⚠️ Jira extraction warning: {result.stderr}")
         
         print(f"✅ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Data refresh completed")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Extraction script failed:")
+        print(f"   STDOUT: {e.stdout}")
+        print(f"   STDERR: {e.stderr}")
     except Exception as e:
         print(f"❌ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Error refreshing data: {str(e)}")
 
 def schedule_data_refresh():
-    """Background thread to refresh data every 5 minutes"""
+    """Background thread to refresh data every 2 minutes"""
     while True:
         time.sleep(120)
         refresh_data_from_sources()
@@ -123,7 +137,7 @@ app.title = "Projects Defects Dashboard"
 app.layout = dhtml.Div([
     dcc.Interval(
         id='interval-component',
-        interval=300*1000,
+        interval=120*1000,
         n_intervals=0
     ),
     dcc.Store(id='data-store'),
@@ -156,7 +170,22 @@ app.layout = dhtml.Div([
         "justifyContent": "center",
         "alignItems": "center"
     }),
+    @app.callback(
+    Output('data-store', 'data'),
+    [Input('interval-component', 'n_intervals'),
+     Input('project-selector', 'value')]
+)
+def update_data_store(n, selected_project):
+    ctx = callback_context
     
+    # If project changed, refresh the data first
+    if ctx.triggered and ctx.triggered[0]['prop_id'] == 'project-selector.value':
+        print(f"🔄 Project changed to '{selected_project}', refreshing extraction scripts...")
+        refresh_data_from_sources()
+    
+    df = load_data(selected_project)
+    return df.to_json(date_format='iso', orient='split')
+
     # In app.layout, ADD after the project selector:
 dhtml.Div([
     dhtml.Button(
