@@ -170,57 +170,31 @@ app.layout = dhtml.Div([
         "justifyContent": "center",
         "alignItems": "center"
     }),
-    @app.callback(
-    Output('data-store', 'data'),
-    [Input('interval-component', 'n_intervals'),
-     Input('project-selector', 'value')]
-)
-def update_data_store(n, selected_project):
-    ctx = callback_context
     
-    # If project changed, refresh the data first
-    if ctx.triggered and ctx.triggered[0]['prop_id'] == 'project-selector.value':
-        print(f"🔄 Project changed to '{selected_project}', refreshing extraction scripts...")
-        refresh_data_from_sources()
-    
-    df = load_data(selected_project)
-    return df.to_json(date_format='iso', orient='split')
-
-    # In app.layout, ADD after the project selector:
-dhtml.Div([
-    dhtml.Button(
-        "🔄 Refresh Data Now",
-        id="refresh-button",
-        n_clicks=0,
-        style={
-            "padding": "8px 16px",
-            "backgroundColor": "#1976D2",
-            "color": "white",
-            "border": "none",
-            "borderRadius": "4px",
-            "cursor": "pointer",
-            "fontWeight": "bold",
-            "fontSize": "13px",
-            "marginLeft": "20px"
-        }
-    )
-], style={
-    "display": "flex",
-    "justifyContent": "center",
-    "alignItems": "center",
-    "marginBottom": "20px"
-})
-
-@app.callback(
-    Output('refresh-status', 'children'),
-    Input('refresh-button', 'n_clicks'),
-    prevent_initial_call=True
-)
-def manual_refresh(n_clicks):
-    """Manually refresh data on button click"""
-    print(f"🔘 Manual refresh triggered (click #{n_clicks})")
-    refresh_data_from_sources()
-    return dhtml.Div("✅ Data refreshed!", style={"color": "green", "fontSize": "12px", "marginLeft": "20px"})
+    # Refresh Button
+    dhtml.Div([
+        dhtml.Button(
+            "🔄 Refresh Data Now",
+            id="refresh-button",
+            n_clicks=0,
+            style={
+                "padding": "8px 16px",
+                "backgroundColor": "#1976D2",
+                "color": "white",
+                "border": "none",
+                "borderRadius": "4px",
+                "cursor": "pointer",
+                "fontWeight": "bold",
+                "fontSize": "13px",
+                "marginLeft": "20px"
+            }
+        )
+    ], style={
+        "display": "flex",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "marginBottom": "20px"
+    }),
 
     # Smart FM Filters (conditionally displayed)
     dhtml.Div(id='smart-fm-filters', children=[
@@ -285,14 +259,33 @@ def manual_refresh(n_clicks):
     dhtml.Div(id='scroll-output', style={'display': 'none'}),
 ], style={"backgroundColor": "#f4f6f9", "minHeight": "100vh", "padding": "20px 0"})
 
+# Callbacks
 @app.callback(
     Output('data-store', 'data'),
     [Input('interval-component', 'n_intervals'),
      Input('project-selector', 'value')]
 )
 def update_data_store(n, selected_project):
+    ctx = callback_context
+    
+    # If project changed, refresh the data first
+    if ctx.triggered and ctx.triggered[0]['prop_id'] == 'project-selector.value':
+        print(f"🔄 Project changed to '{selected_project}', refreshing extraction scripts...")
+        refresh_data_from_sources()
+    
     df = load_data(selected_project)
     return df.to_json(date_format='iso', orient='split')
+
+@app.callback(
+    Output('refresh-status', 'children'),
+    Input('refresh-button', 'n_clicks'),
+    prevent_initial_call=True
+)
+def manual_refresh(n_clicks):
+    """Manually refresh data on button click"""
+    print(f"🔘 Manual refresh triggered (click #{n_clicks})")
+    refresh_data_from_sources()
+    return dhtml.Div("✅ Data refreshed!", style={"color": "green", "fontSize": "12px", "marginLeft": "20px"})
 
 @app.callback(
     Output('smart-fm-filters', 'style'),
