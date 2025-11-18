@@ -21,6 +21,7 @@ PROJECTS = {
     "Timesheet (Jira)": "Jira techcarrot Time Sheet Defects.xlsx",
     "Emirates Transport Career Page(Jira)": "Jira Emirates Transport Defects.xlsx",
     "Dr. RAM Ji Website Req V2 (Jira)": "Jira Doctor_Ramji_Website Defects.xlsx",
+    "AFG Intranet (Jira)": "Jira AFG Intranet.xlsx",
 }
 
 # Filter configurations for Smart FM project - FIXED: Added "Security" tag
