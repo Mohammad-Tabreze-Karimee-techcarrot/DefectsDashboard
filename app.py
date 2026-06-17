@@ -141,6 +141,12 @@ app.layout = dhtml.Div([
         interval=120*1000,
         n_intervals=0
     ),
+    dcc.Interval(
+        id='refresh-status-clear',
+        interval=3000,
+        n_intervals=0,
+        disabled=True
+    ),
     dcc.Store(id='data-store'),
     dcc.Store(id='scroll-trigger', data=0),
     dcc.Store(id='collapse-trigger', data=0),
@@ -278,16 +284,36 @@ def update_data_store(n, selected_project):
     return df.to_json(date_format='iso', orient='split')
 
 @app.callback(
-    Output('refresh-status', 'children'),
+    [Output('refresh-status', 'children'),
+     Output('refresh-status-clear', 'disabled')],
     Input('refresh-button', 'n_clicks'),
     prevent_initial_call=True
 )
 def manual_refresh(n_clicks):
-    """Manually refresh data on button click"""
     print(f"🔘 Manual refresh triggered (click #{n_clicks})")
     refresh_data_from_sources()
-    return dhtml.Div("✅ Data refreshed!", style={"color": "green", "fontSize": "12px", "marginLeft": "20px"})
 
+    return (
+        dhtml.Div(
+            "✅ Data refreshed!",
+            style={
+                "color": "green",
+                "fontSize": "12px",
+                "marginLeft": "20px",
+                "fontWeight": "bold",
+                "animation": "blinker 1s linear infinite"
+            }
+        ),
+        False  # enable timer
+    )
+@app.callback(
+    [Output('refresh-status', 'children', allow_duplicate=True),
+     Output('refresh-status-clear', 'disabled', allow_duplicate=True)],
+    Input('refresh-status-clear', 'n_intervals'),
+    prevent_initial_call=True
+)
+def clear_refresh_message(n):
+    return "", True
 @app.callback(
     Output('smart-fm-filters', 'style'),
     [Input('project-selector', 'value')]
