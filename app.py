@@ -17,6 +17,7 @@ data_folder = os.path.join(current_dir, "data")
 
 # Define your projects
 PROJECTS = {
+    "Mediclinic (Jira)": "Jira Mediclinic Defects.xlsx",
     "Smart FM Replacement (DevOps)": "Smart FM Defects through Python.xlsx",
     "Timesheet (Jira)": "Jira techcarrot Time Sheet Defects.xlsx",
     "Emirates Transport Career Page(Jira)": "Jira Emirates Transport Defects.xlsx",
