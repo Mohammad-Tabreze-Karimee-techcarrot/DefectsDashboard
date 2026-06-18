@@ -369,14 +369,7 @@ def refresh_status(refresh_clicks, clear_intervals):
 
     return dash.no_update, dash.no_update
 
-@app.callback(
-    [Output('refresh-status', 'children'),
-     Output('refresh-status-clear', 'disabled')],
-    Input('refresh-status-clear', 'n_intervals'),
-    prevent_initial_call=True
-)
-def clear_refresh_status(n_intervals):
-    return "", True
+
 
 @app.callback(
     Output('smart-fm-filters', 'style'),
