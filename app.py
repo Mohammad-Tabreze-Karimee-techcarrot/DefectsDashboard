@@ -353,7 +353,7 @@ def refresh_status(refresh_clicks, clear_intervals):
     if trigger == 'refresh-button':
         return (
             dhtml.Span(
-                "✅ Data refreshed",
+                "✅ Loading Latest Data...",
                 style={
                     "color": "#1C2833",
                     "fontSize": "15px",
