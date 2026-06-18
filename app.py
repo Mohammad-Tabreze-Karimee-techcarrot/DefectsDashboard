@@ -84,7 +84,7 @@ def refresh_data_from_sources():
         devops_script = os.path.join(current_dir, "defectsextraction.py")
         if os.path.exists(devops_script):
             print("  🔥 Extracting from Azure DevOps...")
-            result = subprocess.run(["python", devops_script], 
+            result = subprocess.run(["sys.executable", devops_script], 
                                   capture_output=True, 
                                   text=True, 
                                   check=True)
@@ -94,7 +94,7 @@ def refresh_data_from_sources():
         jira_script = os.path.join(current_dir, "jiraextraction.py")
         if os.path.exists(jira_script):
             print("  🔥 Extracting from Jira...")
-            result = subprocess.run(["python", jira_script], 
+            result = subprocess.run(["sys.executable", jira_script], 
                                   capture_output=True, 
                                   text=True, 
                                   check=True)
@@ -270,18 +270,29 @@ app.layout = dhtml.Div([
 # Callbacks
 @app.callback(
     Output('data-store', 'data'),
-    [Input('interval-component', 'n_intervals'),
-     Input('project-selector', 'value')]
+    [
+        Input('interval-component', 'n_intervals'),
+        Input('project-selector', 'value'),
+        Input('refresh-button', 'n_clicks')
+    ]
 )
 def update_data_store(n, selected_project, refresh_clicks):
+
     ctx = callback_context
-    Input('refresh-button', 'n_clicks'),
-    # If project changed, refresh the data first
-    if ctx.triggered and ctx.triggered[0]['prop_id'] == 'project-selector.value':
-        print(f"🔄 Project changed to '{selected_project}', refreshing extraction scripts...")
-        refresh_data_from_sources()
-    
+
+    if ctx.triggered:
+        trigger = ctx.triggered[0]['prop_id']
+
+        if trigger == 'project-selector.value':
+            print(f"🔄 Project changed to '{selected_project}', refreshing extraction scripts...")
+            refresh_data_from_sources()
+
+        elif trigger == 'refresh-button.n_clicks':
+            print("🔄 Manual refresh requested...")
+            refresh_data_from_sources()
+
     df = load_data(selected_project)
+
     return df.to_json(date_format='iso', orient='split')
 
 @app.callback(
