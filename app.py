@@ -133,7 +133,7 @@ severity_order = ["Critical", "High", "Medium", "Low", "Suggestion"]
 # App
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
-app.title = "Projects Defects Dashboard"
+app.title = "Quality Dashboard"
 
 # Layout
 app.layout = dhtml.Div([
@@ -153,7 +153,7 @@ app.layout = dhtml.Div([
     dcc.Store(id='collapse-trigger', data=0),
     dcc.Store(id='filter-state', data=None),
     dhtml.Div([
-        dhtml.H1("Projects Defects Dashboard", 
+        dhtml.H1("Quality Dashboard", 
                 style={"textAlign": "center", "color": "#1C2833", "marginBottom": "10px",
                        "fontFamily": "Segoe UI, Arial, sans-serif", "fontWeight": "600"}),
         dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#708090", 
@@ -276,58 +276,56 @@ app.layout = dhtml.Div([
         Input('refresh-button', 'n_clicks')
     ]
 )
-def update_data_store(n, selected_project, refresh_clicks):
-
+def update_data_store(n_intervals, selected_project, refresh_clicks):
     ctx = callback_context
-    refresh_data_from_sources()
-    time.sleep(2)
+    trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ''
+    if trigger in [
+        'interval-component.n_intervals',
+        'project-selector.value',
+        'refresh-button.n_clicks'
+    ]:
+        refresh_data_from_sources()
     df = load_data(selected_project)
-    if ctx.triggered:
-        trigger = ctx.triggered[0]['prop_id']
-
-        if trigger == 'project-selector.value':
-            print(f"🔄 Project changed to '{selected_project}', refreshing extraction scripts...")
-            refresh_data_from_sources()
-
-        elif trigger == 'refresh-button.n_clicks':
-            print("🔄 Manual refresh requested...")
-            refresh_data_from_sources()
-
-    df = load_data(selected_project)
-
     return df.to_json(date_format='iso', orient='split')
 
 @app.callback(
     [Output('refresh-status', 'children'),
-    Output('refresh-status-clear', 'disabled')],
+     Output('refresh-status-clear', 'disabled')],
     Input('refresh-button', 'n_clicks'),
     prevent_initial_call=True
 )
-def manual_refresh(n_clicks):
-    print(f"🔘 Manual refresh triggered (click #{n_clicks})")
-    #refresh_data_from_sources()
-    print("BUTTON CALLBACK FIRED")
+def manual_refresh_status(n_clicks):
     return (
-        dhtml.Div(
-            "✅ Data refreshed!",
+        dhtml.Span(
+            "✅ Data refreshed",
             style={
-                "color": "Red",
-                "fontSize": "16px",
+                "color": "#1C2833",
+                "fontSize": "15px",
                 "marginLeft": "20px",
-                "fontWeight": "bold",
-                "animation": "blinker 1s linear infinite"
+                "fontWeight": "600"
             }
         ),
-        False  # enable timer
+        False
     )
 @app.callback(
     [Output('refresh-status', 'children', allow_duplicate=True),
      Output('refresh-status-clear', 'disabled', allow_duplicate=True)],
-    Input('refresh-status-clear', 'n_intervals'),
+    Input('refresh-button', 'n_clicks'),
     prevent_initial_call=True
 )
-def clear_refresh_message(n):
-    return "", True
+def manual_refresh_status(n_clicks):
+    return (
+        dhtml.Span(
+            "✅ Data refreshed",
+            style={
+                "color": "#1C2833",
+                "fontSize": "15px",
+                "marginLeft": "20px",
+                "fontWeight": "600"
+            }
+        ),
+        False
+    )
 @app.callback(
     Output('smart-fm-filters', 'style'),
     [Input('project-selector', 'value')]
