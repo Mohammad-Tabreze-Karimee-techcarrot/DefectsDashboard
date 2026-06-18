@@ -110,9 +110,9 @@ def refresh_data_from_sources():
         print(f"❌ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Error refreshing data: {str(e)}")
 
 def schedule_data_refresh():
-    """Background thread to refresh data every 5 minutes"""
+    """Background thread to refresh data every 2 minutes"""
     while True:
-        time.sleep(300)
+        time.sleep(120)
         refresh_data_from_sources()
 
 # Start background refresh thread
@@ -139,7 +139,7 @@ app.title = "Projects Defects Dashboard"
 app.layout = dhtml.Div([
     dcc.Interval(
         id='interval-component',
-        interval=300*1000,
+        interval=120*1000,
         n_intervals=0
     ),
     dcc.Interval(
@@ -296,8 +296,8 @@ def update_data_store(n, selected_project, refresh_clicks):
     return df.to_json(date_format='iso', orient='split')
 
 @app.callback(
-    Output('refresh-status', 'children'),
-    #Output('refresh-status-clear', 'disabled')],
+    [Output('refresh-status', 'children'),
+    Output('refresh-status-clear', 'disabled')],
     Input('refresh-button', 'n_clicks'),
     prevent_initial_call=True
 )
