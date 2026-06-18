@@ -84,8 +84,8 @@ def refresh_data_from_sources():
         devops_script = os.path.join(current_dir, "defectsextraction.py")
         if os.path.exists(devops_script):
             print("  🔥 Extracting from Azure DevOps...")
-            result = subprocess.run(["sys.executable", devops_script], 
-                                  capture_output=True, 
+            result = subprocess.run([sys.executable, devops_script], 
+                                  capture_output=False, 
                                   text=True, 
                                   check=True)
             if result.returncode != 0:
@@ -94,8 +94,8 @@ def refresh_data_from_sources():
         jira_script = os.path.join(current_dir, "jiraextraction.py")
         if os.path.exists(jira_script):
             print("  🔥 Extracting from Jira...")
-            result = subprocess.run(["sys.executable", jira_script], 
-                                  capture_output=True, 
+            result = subprocess.run([sys.executable, jira_script], 
+                                  capture_output=False, 
                                   text=True, 
                                   check=True)
             if result.returncode != 0:
@@ -279,7 +279,9 @@ app.layout = dhtml.Div([
 def update_data_store(n, selected_project, refresh_clicks):
 
     ctx = callback_context
-
+    refresh_data_from_sources()
+    time.sleep(2)
+    df = load_data(selected_project)
     if ctx.triggered:
         trigger = ctx.triggered[0]['prop_id']
 
@@ -303,7 +305,7 @@ def update_data_store(n, selected_project, refresh_clicks):
 )
 def manual_refresh(n_clicks):
     print(f"🔘 Manual refresh triggered (click #{n_clicks})")
-    refresh_data_from_sources()
+    #refresh_data_from_sources()
     print("BUTTON CALLBACK FIRED")
     return (
         dhtml.Div(
