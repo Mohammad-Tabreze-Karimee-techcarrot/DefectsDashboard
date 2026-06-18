@@ -198,15 +198,15 @@ app.layout = dhtml.Div([
                 "color": "#1C2833",
                 "marginBottom": "8px",
                 "fontFamily": "Segoe UI, Arial, sans-serif",
-                "fontWeight": "800",
-                "fontSize": "46px",
+                "fontWeight": "600",
+                "fontSize": "38px",
                 "letterSpacing": "1.5px",
                 "textTransform": "uppercase",
                 "textShadow": "2px 2px 8px rgba(0,0,0,0.08)"
             }
         ),
         dhtml.Div(
-            "Live defect status from Jira and Azure DevOps",
+            #"Live defect status from Jira and Azure DevOps",
             style={"textAlign": "center", "color": "#546E7A", "fontSize": "14px", "marginBottom": "14px"}
         ),
         dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#708090", 
