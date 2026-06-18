@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time
 import glob
+import sys
 
 # Paths and data
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -109,9 +110,9 @@ def refresh_data_from_sources():
         print(f"❌ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Error refreshing data: {str(e)}")
 
 def schedule_data_refresh():
-    """Background thread to refresh data every 2 minutes"""
+    """Background thread to refresh data every 5 minutes"""
     while True:
-        time.sleep(120)
+        time.sleep(300)
         refresh_data_from_sources()
 
 # Start background refresh thread
@@ -138,12 +139,12 @@ app.title = "Projects Defects Dashboard"
 app.layout = dhtml.Div([
     dcc.Interval(
         id='interval-component',
-        interval=120*1000,
+        interval=300*1000,
         n_intervals=0
     ),
     dcc.Interval(
         id='refresh-status-clear',
-        interval=3000,
+        interval=5000,
         n_intervals=0,
         disabled=True
     ),
@@ -272,9 +273,9 @@ app.layout = dhtml.Div([
     [Input('interval-component', 'n_intervals'),
      Input('project-selector', 'value')]
 )
-def update_data_store(n, selected_project):
+def update_data_store(n, selected_project, refresh_clicks):
     ctx = callback_context
-    
+    Input('refresh-button', 'n_clicks'),
     # If project changed, refresh the data first
     if ctx.triggered and ctx.triggered[0]['prop_id'] == 'project-selector.value':
         print(f"🔄 Project changed to '{selected_project}', refreshing extraction scripts...")
@@ -297,8 +298,8 @@ def manual_refresh(n_clicks):
         dhtml.Div(
             "✅ Data refreshed!",
             style={
-                "color": "green",
-                "fontSize": "12px",
+                "color": "Red",
+                "fontSize": "16px",
                 "marginLeft": "20px",
                 "fontWeight": "bold",
                 "animation": "blinker 1s linear infinite"
