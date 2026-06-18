@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from dash import Dash, dcc, html as dhtml, Input, Output, callback_context, State, clientside_callback
 import dash
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import subprocess
 import threading
 import time
@@ -29,6 +30,14 @@ PROJECTS = {
 # Filter configurations for Smart FM project - FIXED: Added "Security" tag
 SMART_FM_TAGS = ["Move In", "Move Out", "Master Data Setup", "Account Renewal", "Active Resident", "Security"]
 SMART_FM_ENVIRONMENTS = ["SIT", "UAT"]
+
+LOCAL_TIMEZONE = os.environ.get("LOCAL_TIMEZONE", "Asia/Dubai")
+
+def get_local_time():
+    try:
+        return datetime.now(ZoneInfo(LOCAL_TIMEZONE))
+    except Exception:
+        return datetime.now().astimezone()
 
 def load_data(project_name):
     """Load data from Excel file for a specific project"""
@@ -79,35 +88,41 @@ def load_data(project_name):
 def refresh_data_from_sources():
     """Run extraction scripts for all data sources"""
     try:
-        print(f"🔄 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Refreshing data from all sources...")
+        print(f"🔄 [{get_local_time().strftime('%Y-%m-%d %H:%M:%S %Z')}] Refreshing data from all sources...")
         
         devops_script = os.path.join(current_dir, "defectsextraction.py")
         if os.path.exists(devops_script):
             print("  🔥 Extracting from Azure DevOps...")
-            result = subprocess.run([sys.executable, devops_script], 
-                                  capture_output=False, 
-                                  text=True, 
-                                  check=True)
+            result = subprocess.run(
+                [sys.executable, devops_script],
+                cwd=current_dir,
+                capture_output=False,
+                text=True,
+                check=True
+            )
             if result.returncode != 0:
                 print(f"  ⚠️ DevOps extraction warning: {result.stderr}")
         
         jira_script = os.path.join(current_dir, "jiraextraction.py")
         if os.path.exists(jira_script):
             print("  🔥 Extracting from Jira...")
-            result = subprocess.run([sys.executable, jira_script], 
-                                  capture_output=False, 
-                                  text=True, 
-                                  check=True)
+            result = subprocess.run(
+                [sys.executable, jira_script],
+                cwd=current_dir,
+                capture_output=False,
+                text=True,
+                check=True
+            )
             if result.returncode != 0:
                 print(f"  ⚠️ Jira extraction warning: {result.stderr}")
         
-        print(f"✅ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Data refresh completed")
+        print(f"✅ [{get_local_time().strftime('%Y-%m-%d %H:%M:%S %Z')}] Data refresh completed")
     except subprocess.CalledProcessError as e:
-        print(f"❌ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Extraction script failed:")
+        print(f"❌ [{get_local_time().strftime('%Y-%m-%d %H:%M:%S %Z')}] Extraction script failed:")
         print(f"   STDOUT: {e.stdout}")
         print(f"   STDERR: {e.stderr}")
     except Exception as e:
-        print(f"❌ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Error refreshing data: {str(e)}")
+        print(f"❌ [{get_local_time().strftime('%Y-%m-%d %H:%M:%S %Z')}] Error refreshing data: {str(e)}")
 
 def schedule_data_refresh():
     """Background thread to refresh data every 2 minutes"""
@@ -134,6 +149,29 @@ severity_order = ["Critical", "High", "Medium", "Low", "Suggestion"]
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
 app.title = "Quality Dashboard"
+app.index_string = """<!DOCTYPE html>
+<html>
+  <head>
+    {%metas%}
+    <title>{%title%}</title>
+    {%favicon%}
+    {%css%}
+    <style>
+      @keyframes blinker {
+        50% { opacity: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    {%app_entry%}
+    <footer>
+      {%config%}
+      {%scripts%}
+      {%renderer%}
+    </footer>
+  </body>
+</html>
+"""
 
 # Layout
 app.layout = dhtml.Div([
@@ -152,15 +190,25 @@ app.layout = dhtml.Div([
     dcc.Store(id='scroll-trigger', data=0),
     dcc.Store(id='collapse-trigger', data=0),
     dcc.Store(id='filter-state', data=None),
-    dhtml.Style("""
-        @keyframes blinker {
-            50% { opacity: 0; }
-        }
-    """),
     dhtml.Div([
-        dhtml.H1("Quality Dashboard", 
-                style={"textAlign": "center", "color": "#1C2833", "marginBottom": "10px",
-                       "fontFamily": "Segoe UI, Arial, sans-serif", "fontWeight": "600"}),
+        dhtml.H1(
+            "Quality Dashboard",
+            style={
+                "textAlign": "center",
+                "color": "#1C2833",
+                "marginBottom": "8px",
+                "fontFamily": "Segoe UI, Arial, sans-serif",
+                "fontWeight": "800",
+                "fontSize": "46px",
+                "letterSpacing": "1.5px",
+                "textTransform": "uppercase",
+                "textShadow": "2px 2px 8px rgba(0,0,0,0.08)"
+            }
+        ),
+        dhtml.Div(
+            "Live defect status from Jira and Azure DevOps",
+            style={"textAlign": "center", "color": "#546E7A", "fontSize": "14px", "marginBottom": "14px"}
+        ),
         dhtml.Div(id="last-updated", style={"textAlign": "center", "color": "#708090", 
                                             "fontSize": "13px", "marginBottom": "20px"}),
         dhtml.Div(id='refresh-status', style={"display": "inline-block"})
@@ -283,44 +331,47 @@ app.layout = dhtml.Div([
 )
 def update_data_store(n_intervals, selected_project, refresh_clicks):
     ctx = callback_context
-    trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ''
-    if trigger in [
-        'interval-component.n_intervals',
-        'project-selector.value',
-        'refresh-button.n_clicks'
-    ]:
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
+    if trigger in ['interval-component', 'project-selector', 'refresh-button']:
         refresh_data_from_sources()
     df = load_data(selected_project)
     return df.to_json(date_format='iso', orient='split')
 
 @app.callback(
-    [
-        Output('refresh-status', 'children', allow_duplicate=True),
-        Output('refresh-status-clear', 'disabled', allow_duplicate=True)
-    ],
-    Input('refresh-button', 'n_clicks'),
+    [Output('refresh-status', 'children'),
+     Output('refresh-status-clear', 'disabled')],
+    [Input('refresh-button', 'n_clicks'),
+     Input('refresh-status-clear', 'n_intervals')],
     prevent_initial_call=True
 )
-def manual_refresh_status(n_clicks):
-    return (
-        dhtml.Span(
-            "✅ Data refreshed",
-            style={
-                "color": "#1C2833",
-                "fontSize": "15px",
-                "marginLeft": "20px",
-                "fontWeight": "600",
-                "animation": "blinker 1s linear infinite"
-            }
-        ),
-        False
-    )
+def refresh_status(refresh_clicks, clear_intervals):
+    ctx = callback_context
+    if not ctx.triggered:
+        return dash.no_update, dash.no_update
+
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+    if trigger == 'refresh-button':
+        return (
+            dhtml.Span(
+                "✅ Data refreshed",
+                style={
+                    "color": "#1C2833",
+                    "fontSize": "15px",
+                    "marginLeft": "20px",
+                    "fontWeight": "600",
+                    "animation": "blinker 1s linear infinite"
+                }
+            ),
+            False
+        )
+    if trigger == 'refresh-status-clear':
+        return "", True
+
+    return dash.no_update, dash.no_update
 
 @app.callback(
-    [
-        Output('refresh-status', 'children', allow_duplicate=True),
-        Output('refresh-status-clear', 'disabled', allow_duplicate=True)
-    ],
+    [Output('refresh-status', 'children'),
+     Output('refresh-status-clear', 'disabled')],
     Input('refresh-status-clear', 'n_intervals'),
     prevent_initial_call=True
 )
@@ -727,7 +778,7 @@ def update_all(json_data, pie_click, bar_state_click, bar_severity_click, tag_fi
         
         links_container = dhtml.Div(assignee_sections, style={"maxWidth": "100%", "overflow": "hidden"})
     
-    last_updated = f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    last_updated = f"Last Updated: {get_local_time().strftime('%Y-%m-%d %H:%M:%S %Z')}"
     
     return status_table, fig_pie, fig_bar_state, fig_bar_severity, links_container, last_updated, new_scroll_count, new_collapse_count, new_filter_state
 
