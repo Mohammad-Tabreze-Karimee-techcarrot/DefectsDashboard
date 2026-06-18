@@ -152,6 +152,11 @@ app.layout = dhtml.Div([
     dcc.Store(id='scroll-trigger', data=0),
     dcc.Store(id='collapse-trigger', data=0),
     dcc.Store(id='filter-state', data=None),
+    dhtml.Style("""
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+    """),
     dhtml.Div([
         dhtml.H1("Quality Dashboard", 
                 style={"textAlign": "center", "color": "#1C2833", "marginBottom": "10px",
@@ -289,8 +294,10 @@ def update_data_store(n_intervals, selected_project, refresh_clicks):
     return df.to_json(date_format='iso', orient='split')
 
 @app.callback(
-    [Output('refresh-status', 'children'),
-     Output('refresh-status-clear', 'disabled')],
+    [
+        Output('refresh-status', 'children', allow_duplicate=True),
+        Output('refresh-status-clear', 'disabled', allow_duplicate=True)
+    ],
     Input('refresh-button', 'n_clicks'),
     prevent_initial_call=True
 )
@@ -302,30 +309,24 @@ def manual_refresh_status(n_clicks):
                 "color": "#1C2833",
                 "fontSize": "15px",
                 "marginLeft": "20px",
-                "fontWeight": "600"
+                "fontWeight": "600",
+                "animation": "blinker 1s linear infinite"
             }
         ),
         False
     )
+
 @app.callback(
-    [Output('refresh-status', 'children', allow_duplicate=True),
-     Output('refresh-status-clear', 'disabled', allow_duplicate=True)],
-    Input('refresh-button', 'n_clicks'),
+    [
+        Output('refresh-status', 'children', allow_duplicate=True),
+        Output('refresh-status-clear', 'disabled', allow_duplicate=True)
+    ],
+    Input('refresh-status-clear', 'n_intervals'),
     prevent_initial_call=True
 )
-def manual_refresh_status(n_clicks):
-    return (
-        dhtml.Span(
-            "✅ Data refreshed",
-            style={
-                "color": "#1C2833",
-                "fontSize": "15px",
-                "marginLeft": "20px",
-                "fontWeight": "600"
-            }
-        ),
-        False
-    )
+def clear_refresh_status(n_intervals):
+    return "", True
+
 @app.callback(
     Output('smart-fm-filters', 'style'),
     [Input('project-selector', 'value')]
