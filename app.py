@@ -296,15 +296,15 @@ def update_data_store(n, selected_project, refresh_clicks):
     return df.to_json(date_format='iso', orient='split')
 
 @app.callback(
-    [Output('refresh-status', 'children'),
-     Output('refresh-status-clear', 'disabled')],
+    Output('refresh-status', 'children'),
+    #Output('refresh-status-clear', 'disabled')],
     Input('refresh-button', 'n_clicks'),
     prevent_initial_call=True
 )
 def manual_refresh(n_clicks):
     print(f"🔘 Manual refresh triggered (click #{n_clicks})")
     refresh_data_from_sources()
-
+    print("BUTTON CALLBACK FIRED")
     return (
         dhtml.Div(
             "✅ Data refreshed!",
